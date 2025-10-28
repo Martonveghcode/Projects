@@ -1,0 +1,63 @@
+.header {
+    background-color: #21222A;
+    height: 100px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+}
+
+.img1 {
+    width: 55px;
+    /* margin-top: 20px;  <-- remove this */
+}
+
+.react-facts {
+    margin-left: 5px;
+    font-size: 1.5rem;
+    color: aquamarine;
+    font-family: "inter";
+    font-weight: 700;
+}
+
+nav {
+    display:flex;
+    align-items: center;
+}
+
+.main {
+    
+    padding: 15px;
+}
+
+h1 {
+    font-family: "inter";
+    font-weight: 600;
+    color:aliceblue;
+    font-size:2.4rem;
+}
+
+.facts-list {
+    color: aliceblue;
+    font-family: "inter";
+    font-weight: 400;
+    margin-top:20px;
+    max-width: 400px;
+
+}
+
+.facts-list>li {
+    margin-bottom: 7px;
+    line-height: 19px;
+}
+
+body {
+    background-color: #282D35;
+    background-image: url(Screen_Shot_2020_03_13_at_10.03.13_AM.0.jfif);
+    background-repeat: no-repeat;
+    background-position:450px 160px ;
+}
+
+.facts-list>li::marker {
+    color:aquamarine;
+    font-size:1.5rem;
+}

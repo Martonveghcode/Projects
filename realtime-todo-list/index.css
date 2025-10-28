@@ -1,0 +1,29 @@
+#main {
+    background-color: cadetblue;
+    width: 100vw;
+    height: 100vh;
+    margin: auto;
+}
+
+* {
+    font-family: 'Courier New', Courier, monospace;
+}
+
+body {
+    text-align: center;
+}
+
+li {
+    display: inline-block;
+}
+
+div {
+    background-color: blueviolet;
+    width: 75vw;
+    height: 5vh;
+    margin: 5px auto;
+    font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+    font-size: 20px;
+    border-radius: 10px;
+}
+    
