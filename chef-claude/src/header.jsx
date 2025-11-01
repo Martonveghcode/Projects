@@ -4,10 +4,11 @@ export default function Header() {
             <nav className="HeaderNav">
                 <div className="titleContainer">
                     <img src="\src\assets\robot-chef-holding-fork-knife-symbolizing-automation-food-industry-chef-robot-holding-fork-knife-kitchen-331778142.png" alt="robot picture" id="robot"/>
-                    <p className="title">Chef claude</p>
+                    <h1 className="title">Chef claude</h1>
                 </div>
-            </nav>
 
+            </nav>
+            
         </section>
     )
 }
