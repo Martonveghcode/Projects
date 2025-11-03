@@ -1,0 +1,16 @@
+Plain Paste Toggle is a small Python utility that lets you paste text without any formatting — just plain text — anywhere on your computer. It runs in the background and can be turned on or off with a single keypress.
+
+How it works:
+
+Press F8 to toggle Plain Paste mode on or off.
+
+When it’s ON, pressing Ctrl + V pastes the copied text as plain text (no colors, bold, fonts, links, etc.).
+
+When it’s OFF, pasting behaves normally.
+
+Shows a small on-screen toast and a console message when toggled.
+
+You can quit anytime with Ctrl + Alt + Q.
+
+Why it’s useful:
+If you often copy text from the web, chat, or documents into editors like Google Docs, Word, or email, this tool automatically removes unwanted formatting — saving you from “Paste as plain text” menus or manual cleanup.
