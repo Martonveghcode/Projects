@@ -1,0 +1,28 @@
+ .keyboard > section > button {
+    width: 50px;
+    height: 40px;
+    background-color: grey;
+    color: white;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 2rem;
+    margin: auto;
+}
+
+
+
+main {
+    margin: 390px ;
+    align-items: center;
+    display: block;
+    justify-items: auto;
+
+}
+
+main > header {
+    background-color: grey;
+    color: white;
+    border: 2px solid black;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
