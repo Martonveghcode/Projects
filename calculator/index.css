@@ -11,7 +11,8 @@
 
 
 main {
-    margin: 390px ;
+    margin-left:45vw ;
+    margin-top: 30vh;
     align-items: center;
     display: block;
     justify-items: auto;
@@ -24,5 +25,6 @@ main > header {
     border: 2px solid black;
     border-radius: 5px;
     margin-bottom: 20px;
+    width: 147px;
 }
 
