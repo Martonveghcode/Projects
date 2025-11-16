@@ -1,0 +1,10 @@
+.header {
+    font-size: 2rem;
+    margin:auto;
+    width: 500px;
+}
+
+iframe {
+    width: 600px;
+    height: 400px;
+}
