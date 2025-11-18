@@ -7,14 +7,23 @@ export default function App() {
     const [padsState, setPadsState] = useState(pads)
     
 
-    function toggle() {
-        console.log("clicked!")
+    function toggle(id) {
+        console.log(id)
+        setPadsState( prevPads => prevPads.map(pad => {if(pad.id === id) {
+            return(pad = {...pad, on: !pad.on})
+            
+            
+        }
+    else {
+        return pad
+                
+            }}) )
     }
     return (
         <main>
             <div className="pad-container">
                 {padsState.map(pad => (
-                    <Pad key={pad.id} color={pad.color} func={toggle} 
+                    <Pad key={pad.id} id={pad.id} color={pad.color} on={pad.on} func={toggle} 
                         
                     />))}
                 
