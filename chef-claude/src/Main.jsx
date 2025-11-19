@@ -1,7 +1,7 @@
 import React from "react"
 import Recipe from "./recipe"
 import IngredientsList from "./ingredientslList"
-
+import { generate } from "./ai"
 export default function Main() {
     const [isShown, setIsShown] = React.useState(false)
 
@@ -40,7 +40,7 @@ export default function Main() {
                         {ingredients.length > 5 ? <h3>Ready for a recipe?</h3> : null}
                         {ingredients.length > 5 ?<p>Generate a recipe from your list of ingredients.</p> : null}
                     </div>
-                    {ingredients.length > 5 ? <button onClick={handleShownRep}>Get a recipe</button> : null}
+                    {ingredients.length > 5 ? <button onClick={() => generate(ingredients)}>Get a recipe</button> : null}
                 </div> 
             </section>
             {isShown ? <Recipe/> : null}
