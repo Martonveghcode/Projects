@@ -1,10 +1,32 @@
 .header {
     font-size: 2rem;
+    color: white;
     margin:auto;
-    width: 500px;
+    width: 100%;
+    
 }
 
-iframe {
-    width: 600px;
-    height: 400px;
+h1 {
+    margin-left: 40%;
 }
+
+
+
+body {
+    background-color: #222831;
+}
+
+    .iframe-grid {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  justify-content: center;
+  column-gap: 0;  /* no space between iframes */
+  row-gap: 10px;
+}
+
+.iframe-grid iframe {
+  width: 600px;
+  height: 371px;
+  border-radius: 5px;
+}
+
