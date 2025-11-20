@@ -15,7 +15,7 @@ const ai = new GoogleGenAI({
 
 export async function generate(ingredients) {
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.0-flash",
     contents: `I have ${ingredients}. Please give me a recipe you'd recommend I make!`,
     config: {
       systemInstruction: SYSTEM_PROMPT,

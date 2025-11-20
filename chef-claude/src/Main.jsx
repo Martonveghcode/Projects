@@ -3,7 +3,7 @@ import Recipe from "./recipe"
 import IngredientsList from "./ingredientslList"
 import { generate } from "./ai"
 export default function Main() {
-    const [isShown, setIsShown] = React.useState(false)
+    const [isShown, setIsShown] = React.useState("")
 
     
     const [ingredients, setIngredients] = React.useState([])
@@ -16,8 +16,10 @@ export default function Main() {
         const newIngredient = formData.get("ingredient")
         setIngredients(prevIngredients => [...prevIngredients, newIngredient])
     }
-    function handleShownRep() {
-        setIsShown(!isShown)
+    async function getRecipe() {
+        const recipe = await generate(ingredients)
+        setIsShown(recipe)
+        
     }
     
 
@@ -40,10 +42,10 @@ export default function Main() {
                         {ingredients.length > 5 ? <h3>Ready for a recipe?</h3> : null}
                         {ingredients.length > 5 ?<p>Generate a recipe from your list of ingredients.</p> : null}
                     </div>
-                    {ingredients.length > 5 ? <button onClick={() => generate(ingredients)}>Get a recipe</button> : null}
+                    {ingredients.length > 5 ? <button onClick={getRecipe}>Get a recipe</button> : null}
                 </div> 
             </section>
-            {isShown ? <Recipe/> : null}
+            {isShown ? <Recipe thing={isShown}/> : null}
 
         </main>
     )
