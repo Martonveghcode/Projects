@@ -20,8 +20,17 @@ export default function Main() {
             fetch(" https://api.imgflip.com/get_memes")
             .then(res => res.json())
             .then(data => setAllMemes(data.data.memes))
+            console.log(allMemes)
         }, [])
 
+
+        function getRandImage() {
+            const randomIndex = Math.floor(Math.random() * allMemes.length)
+            const newMemeUrl = allMemes[randomIndex].url 
+            setMeme(prev => ({
+                ...prev, imageUrl: newMemeUrl
+            }))
+        }
     return (
         <main>
             <div className="form">
@@ -44,7 +53,7 @@ export default function Main() {
                         value={meme.bottomText}
                     />
                 </label>
-                <button className="newMemeInput">Get a new meme image 🖼</button>
+                <button className="newMemeInput" onClick={getRandImage}>Get a new meme image 🖼</button>
             </div>
             <div className="meme">
                 <img src={meme.imageUrl} />
