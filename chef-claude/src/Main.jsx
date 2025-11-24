@@ -4,6 +4,7 @@ import IngredientsList from "./ingredientslList"
 import { generate } from "./ai"
 import { useRef } from "react"
 import { useEffect } from "react"
+
 export default function Main() {
     const [isShown, setIsShown] = React.useState("")
     const recipeSection = useRef(null)
@@ -27,10 +28,10 @@ export default function Main() {
     
     useEffect(() => {
         if (ingredients !== "" && recipeSection.current !== null) {
-            recipeSection.current.scrollIntoView()
+            recipeSection.current.scrollIntoView({behavior: "smooth" })
          }
 
-    }, [ingredients])
+    }, [isShown, ingredients])
 
     return (
         <main>
