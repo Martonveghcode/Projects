@@ -21,6 +21,7 @@ export default function Main() {
             .then(res => res.json())
             .then(data => setAllMemes(data.data.memes))
             console.log(allMemes)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         }, [])
 
 
