@@ -2,9 +2,13 @@ import React from "react"
 import Recipe from "./recipe"
 import IngredientsList from "./ingredientslList"
 import { generate } from "./ai"
+import { useRef } from "react"
+import { useEffect } from "react"
+
 export default function Main() {
     const [isShown, setIsShown] = React.useState("")
-
+    const recipeSection = useRef(null)
+    console.log(recipeSection)
     
     const [ingredients, setIngredients] = React.useState([])
 
@@ -22,6 +26,12 @@ export default function Main() {
         
     }
     
+    useEffect(() => {
+        if (ingredients !== "" && recipeSection.current !== null) {
+            recipeSection.current.scrollIntoView({behavior: "smooth" })
+         }
+
+    }, [isShown, ingredients])
 
     return (
         <main>
@@ -36,7 +46,7 @@ export default function Main() {
             </form>
             <section>
                 {ingredients.length > 0 ? <h2>Ingredients on hand:</h2> : null}
-                <IngredientsList ingredientsListItems={ingredientsListItems}/>
+                <IngredientsList ref={recipeSection} ingredientsListItems={ingredientsListItems}/>
                 <div className="get-recipe-container"> 
                     <div>
                         {ingredients.length > 5 ? <h3>Ready for a recipe?</h3> : null}
