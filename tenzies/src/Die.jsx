@@ -1,16 +1,12 @@
-
-
 export default function Die(props) {
+    const styles = {
+        backgroundColor: props.isHeld ? "#59E391" : "white"
+    }
     
-     
-    
-
-    return(
-        <>
-            <button className="die-Btn" style={props.isHeld ? {backgroundColor: "green"} :
-             null } onClick={() => props.onBtn(props.id)}   >
-                {props.value} 
-            </button>
-        </>
+    return (
+        <button 
+            style={styles}
+            onClick={props.hold}
+        >{props.value}</button>
     )
 }

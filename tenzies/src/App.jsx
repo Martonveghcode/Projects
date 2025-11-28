@@ -1,36 +1,68 @@
-import { useState } from "react";
-import Die from "./die";
-import { nanoid } from "nanoid";
-
+import { useState } from "react"
+import Die from "./Die"
+import { nanoid } from "nanoid"
 
 export default function App() {
-    const [held, setheld] = useState(false)
-    const [numbers, setNumbers] = useState(Array(10).fill(null))
+    const [dice, setDice] = useState(generateAllNewDice())
+    let btnText = "roll"
+    let gameWon = false
+    const allHeld = dice.every(die => die.isHeld)
+const firstValue = dice[0].value
+const allSameValue = dice.every(die => die.value === firstValue)
+
+if (allHeld && allSameValue) {
+    console.log("Game won!")
+    gameWon = true
+    btnText = "roll"
+    
+}
+
+if (gameWon) {
+    btnText = "new game"
+}
+
     function generateAllNewDice() {
-        
-        setNumbers(numbers.map(() => <Die onBtn={hold} key={nanoid()}  isHeld={held} id={nanoid()} value={Math.floor(Math.random() * 6 + 1)}/> ))
-        console.log(numbers)
+        return new Array(10)
+            .fill(0)
+            .map(() => ({
+                value: Math.ceil(Math.random() * 6),
+                isHeld: false,
+                id: nanoid()
+            }))
     }
-    function hold(key) {
-        console.log(key)
-        setheld( prevHeld => prevHeld.map(item => {
-            return item.id === id ? {...item, isHeld : true } : item
+
+
+
+    function rollDice() {
+        setDice(prevDice => prevDice.map( die => die.isHeld ? die : {
+            ...die, value: Math.ceil(Math.random() * 6)
         }))
-        
     }
 
-   
+    function hold(id) {
+        setDice(oldDice => oldDice.map(die =>
+            die.id === id ?
+                { ...die, isHeld: !die.isHeld } :
+                die
+        ))
+    }
 
-    return(<>
-    <main>
-        <div className="dieDiv">
-            {numbers}
-            
-        </div>
-        <button className="dice-btn" onClick={generateAllNewDice}>Role dice </button>
-    </main>
-    
-    
-    </>)
-    
+    const diceElements = dice.map(dieObj => (
+        <Die
+            key={dieObj.id}
+            value={dieObj.value}
+            isHeld={dieObj.isHeld}
+            hold={() => hold(dieObj.id)}
+        />
+    ))
+
+    return (
+        <main>
+            <h1>Tenzies-React</h1>
+            <div className="dice-container">
+                {diceElements}
+            </div>
+            <button className="roll-dice" onClick={gameWon ? generateAllNewDice : rollDice}>{btnText}</button>
+        </main>
+    )
 }
