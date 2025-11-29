@@ -7,6 +7,7 @@ export default function Die(props) {
         <button 
             style={styles}
             onClick={props.hold}
+            aria-label="dice"
         >{props.value}</button>
     )
 }
