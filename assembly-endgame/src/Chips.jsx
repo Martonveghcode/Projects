@@ -9,8 +9,8 @@ export default function Chips() {
         <>
             <section className="chips">
                 {chips.map(x => (
-                    <div key={x} style={{background: languages[x].backgroundColor}}>
-                        <p style={{color: languages[x].color}}>{languages[x].name}</p>
+                    <div className="languages-div" key={x} style={{background: languages[x].backgroundColor}}>
+                        <p className="languages-p" style={{color: languages[x].color}}>{languages[x].name}</p>
                     </div>
                 ))}
             </section>

@@ -31,10 +31,52 @@ header {
     display: flex;
     flex-wrap: wrap;
     margin-top: 50px;
+    width: 350px;
+    justify-content: center;
 }
 
-.chips > button {
-    width: 50px;
-    background-color: #262626;
-    margin: 20px 20px;
+
+
+.languages-div {
+    margin: 3px ;
+    border-radius: 8px;
+    height: 35px;
+    padding: 0 3px;
+
+}
+
+.word-p {
+    margin-left: 3px;
+    background-color: #363636;
+    border-bottom: 2px solid #A8A8A8;
+    width: 30px;
+    height: 30px;
+    font-size: 1.5rem;
+    text-align: center;
+    text-transform: capitalize;
+}
+
+.keyboard {
+    background-color: #FCBA29;
+    
+    width: auto;
+    height: 30px;
+    font-size: 1.5rem;
+    text-align:center;
+    text-transform: capitalize;
+    color: #262626;
+    margin: 2px 2px;
+    border-radius: 5px;
+    
+}
+
+.newGame {
+    background-color: rgb(78, 157, 131);
+    border: 1px solid white;
+    width: 250px;
+    height: 45px;
+    font-size: 2rem;
+    border-radius: 15px;
+    margin-left: 50px;
+    margin-top: 35px;
 }
