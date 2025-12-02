@@ -80,3 +80,12 @@ header {
     margin-left: 50px;
     margin-top: 35px;
 }
+
+.green {
+    background-color: green;
+
+}
+
+.red {
+    background-color: orange;
+}

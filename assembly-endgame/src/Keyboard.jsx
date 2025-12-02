@@ -1,4 +1,6 @@
-export default function Keyboard() {
+import clsx from "clsx"
+
+export default function Keyboard(props) {
    const alphabet = "abcdefghijklmnopqrstuvwxyz"
    
 
@@ -6,7 +8,8 @@ export default function Keyboard() {
     return (
         <>
         <section className="chips">{alphabet.split("").map((x) =>
-             <button key={x} className="keyboard">{x}</button>)}</section>
+             <button  onClick={() => props.letters(x)} key={x}
+              className={clsx("keyboard", props.word.split("").includes(x) && props.letter.includes(x) ? "green" : "red")}>{x}</button>)}</section>
         
         </>
     )
