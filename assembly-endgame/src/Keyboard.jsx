@@ -8,7 +8,7 @@ export default function Keyboard(props) {
     return (
         <>
         <section className="chips">{alphabet.split("").map((x) =>
-             <button  onClick={() => props.letters(x)} key={x}
+             <button  onClick={props.gameOver ? null : () => props.letters(x)} key={x}
               className={clsx("keyboard", props.word.split("").includes(x) && props.letter.includes(x) ? "green" : "red")}>{x}</button>)}</section>
         
         </>

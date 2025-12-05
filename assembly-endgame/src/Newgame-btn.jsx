@@ -1,7 +1,7 @@
-export default function NewGame() {
+export default function NewGame(props) {
     return(
         <>
-            <button className="newGame">New Game</button>
+            {props.gameOver ? <button className="newGame">New Game</button> : null}
         </>
     )
 }

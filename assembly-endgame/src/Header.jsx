@@ -1,14 +1,14 @@
-export default function Header() {
+export default function Header(props) {
     return(
         <>
             <header>
             <h1>Assembly: Endgame</h1>
             <p>guess the word in under 8 attempts to keep
                  the programming world safe from Assembly!</p>
-            <div className="message-div">
+            {props.gameOver ? <div className="message-div">
                 <p>placeholder for message </p>
                 
-            </div>
+            </div> : null}
             </header>
         </>
     )

@@ -1,24 +1,20 @@
-import { useState } from "react"
-import { languages } from "./languages"
-
-export default function Chips() {
-    
-    const [chips] = useState(Array.from({ length: 9 }, (_, i) => i))
-
-    return(
+export default function Chips({ chips }) {
+    return (
         <>
             <section className="chips">
-                {chips.map(x => (
-                    <div className="languages-div" key={x} style={{background: languages[x].backgroundColor}}>
-                        <p className="languages-p" style={{color: languages[x].color}}>{languages[x].name}</p>
+                {chips.map(chip => (
+                    <div
+                        className={`languages-div${chip.lost ? " lost" : ""}`}
+                        key={chip.id}
+                        style={{ background: chip.backgroundColor }}
+                    >
+                        <p className="languages-p" style={{ color: chip.color }}>
+                            {chip.name}
+                        </p>
                     </div>
                 ))}
+                
             </section>
         </>
     )
 }
-    
-   
-
-
-    
