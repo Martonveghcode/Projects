@@ -7,7 +7,7 @@ import Word from "./Word"
 import { languages } from "./languages"
 export default function App() {
     const [letters, setLetters] = useState([])
-    const [currentWord] = useState("default")
+    const [currentWord] = useState("mar")
     const [colour, setColour] = useState(null)
     const [wrongGuessCount, setWrongGuessCount] = useState(0)
     const chips = languages.map((language, index) => ({
@@ -16,7 +16,7 @@ export default function App() {
         lost: index < wrongGuessCount,
     }))
     let isGameOver = false
-
+    let gameWon = false
     function handleLetters(x) {
         setLetters(prev => (prev.includes(x) ? prev : [...prev, x]))
         const isCorrect = currentWord.includes(x)
@@ -34,13 +34,18 @@ export default function App() {
         isGameOver = true
     }
 
+   if (currentWord.split("").every(letter => letters.includes(letter))) {
+        gameWon = true
+
+
+   }
     return (
         <>
-            <Header gameOver={isGameOver} />
+            <Header gameWon={gameWon} gameOver={isGameOver} />
             <Chips handleWrong={handleWrongGuess} chips={chips}/>
             <Word word={currentWord} guessedLetters={letters} />
             <Keyboard letters={handleLetters} gameOver={isGameOver} colour={colour} word={currentWord} letter={letters} />
-            <NewGame gameOver={isGameOver} />
+            <NewGame gameWon={gameWon} gameOver={isGameOver} />
         </>
     );
 }

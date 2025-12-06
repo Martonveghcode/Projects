@@ -1,7 +1,7 @@
 export default function NewGame(props) {
     return(
         <>
-            {props.gameOver ? <button className="newGame">New Game</button> : null}
+            {props.gameOver || props.gameWon ? <button className="newGame">New Game</button> : null}
         </>
     )
 }
