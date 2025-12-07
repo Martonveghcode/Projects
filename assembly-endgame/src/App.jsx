@@ -1,10 +1,11 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Chips from "./Chips"
 import Header from "./Header"
 import Keyboard from "./Keyboard"
 import NewGame from "./Newgame-btn"
 import Word from "./Word"
 import { languages } from "./languages"
+import { getFarewellText } from "./utils"
 export default function App() {
     const [letters, setLetters] = useState([])
     const [currentWord] = useState("mar")
@@ -17,6 +18,7 @@ export default function App() {
     }))
     let isGameOver = false
     let gameWon = false
+    
     function handleLetters(x) {
         setLetters(prev => (prev.includes(x) ? prev : [...prev, x]))
         const isCorrect = currentWord.includes(x)
@@ -28,6 +30,7 @@ export default function App() {
 
     function handleWrongGuess() {
         setWrongGuessCount(prev => Math.min(prev + 1, languages.length))
+        
     }
 
     if (languages.length - wrongGuessCount === 1) {
@@ -37,11 +40,23 @@ export default function App() {
    if (currentWord.split("").every(letter => letters.includes(letter))) {
         gameWon = true
 
+    
+
 
    }
+
+    const farewell = useMemo(() => {
+        if (wrongGuessCount > 0 && wrongGuessCount <= languages.length) {
+            const eliminatedLanguage = languages[wrongGuessCount - 1]
+            const farewellMessage = getFarewellText(eliminatedLanguage.name)
+            console.log(farewellMessage)
+            return farewellMessage
+        }
+        return ""
+    }, [wrongGuessCount])
     return (
         <>
-            <Header gameWon={gameWon} gameOver={isGameOver} />
+            <Header farewell={farewell} gameWon={gameWon} gameOver={isGameOver} />
             <Chips handleWrong={handleWrongGuess} chips={chips}/>
             <Word word={currentWord} guessedLetters={letters} />
             <Keyboard letters={handleLetters} gameOver={isGameOver} colour={colour} word={currentWord} letter={letters} />

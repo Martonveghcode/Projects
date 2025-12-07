@@ -10,7 +10,9 @@ export default function Header(props) {
                 <p>You Lost!</p>
             </div> : props.gameWon ? <div className="message-div" style={{backgroundColor: "green"}}>
                 <p>You Won!</p>
-            </div> : null}
+            </div> : <div className="wrong-answer-div" style={{backgroundColor: "purple"}}>
+                <p className="wrong-p">{props.farewell}</p>
+            </div>}
             </header>
         </>
     )
