@@ -1,7 +1,13 @@
-export default function NewGame(props) {
-    return(
+export default function NewGame({ gameOver, gameWon, onNewGame }) {
+    if (!gameOver && !gameWon) {
+        return null
+    }
+
+    return (
         <>
-            {props.gameOver || props.gameWon ? <button className="newGame">New Game</button> : null}
+            <button onClick={onNewGame} className="newGame">
+                New Game
+            </button>
         </>
     )
 }

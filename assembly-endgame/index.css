@@ -126,3 +126,15 @@ div.lost::before {
     border-radius: 5px;
     border: 2px dashed rgb(56, 53, 53);
 }
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+    white-space: nowrap;
+}

@@ -5,10 +5,12 @@ import Keyboard from "./Keyboard"
 import NewGame from "./Newgame-btn"
 import Word from "./Word"
 import { languages } from "./languages"
-import { getFarewellText } from "./utils"
+import { getFarewellText, setWord } from "./utils"
+import Confetti from 'react-confetti'
+
 export default function App() {
     const [letters, setLetters] = useState([])
-    const [currentWord] = useState("mar")
+    const [currentWord, setCurrentWord] = useState(() => setWord())
     const [colour, setColour] = useState(null)
     const [wrongGuessCount, setWrongGuessCount] = useState(0)
     const chips = languages.map((language, index) => ({
@@ -39,13 +41,22 @@ export default function App() {
 
    if (currentWord.split("").every(letter => letters.includes(letter))) {
         gameWon = true
-
+        
     
 
 
    }
 
-    const farewell = useMemo(() => {
+    
+
+    function resetGame() {
+        setLetters([])
+        setWrongGuessCount(0)
+        setColour(null)
+        setCurrentWord(setWord())
+    }
+
+     const farewell = useMemo(() => {
         if (wrongGuessCount > 0 && wrongGuessCount <= languages.length) {
             const eliminatedLanguage = languages[wrongGuessCount - 1]
             const farewellMessage = getFarewellText(eliminatedLanguage.name)
@@ -58,9 +69,10 @@ export default function App() {
         <>
             <Header farewell={farewell} gameWon={gameWon} gameOver={isGameOver} />
             <Chips handleWrong={handleWrongGuess} chips={chips}/>
-            <Word word={currentWord} guessedLetters={letters} />
+            <Word won={gameWon} word={currentWord} guessedLetters={letters} />
             <Keyboard letters={handleLetters} gameOver={isGameOver} colour={colour} word={currentWord} letter={letters} />
-            <NewGame gameWon={gameWon} gameOver={isGameOver} />
+            <NewGame onNewGame={resetGame} gameWon={gameWon} gameOver={isGameOver} />
+            {gameWon ? <Confetti /> : null}
         </>
     );
 }
