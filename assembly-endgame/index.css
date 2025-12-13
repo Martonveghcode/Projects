@@ -25,6 +25,7 @@ header {
     width: 100%;
     height: 60px;
     font-size: 1.5rem;
+    border-radius: 5px;
 }
 
 .chips {
@@ -44,6 +45,7 @@ header {
     padding: 0 3px;
     position: relative;
     overflow: hidden;
+
 
 }
 
@@ -104,4 +106,35 @@ div.lost::before {
     top: 0;
     left: 0;
     background-color: rgba(0, 0, 0, 0.7);
+}
+
+.wrong-p {
+    font-size: 1.2rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-style: italic;
+    color: white;
+
+}
+
+.wrong-answer-div {
+    display: flex;
+    justify-content: center;
+    background-color: purple;
+    width: 100%;
+    height: 60px;
+    font-size: 1.5rem;
+    border-radius: 5px;
+    border: 2px dashed rgb(56, 53, 53);
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+    white-space: nowrap;
 }
