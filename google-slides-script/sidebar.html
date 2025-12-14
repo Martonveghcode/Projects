@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+  <body style="font-family:Arial, sans-serif; padding:12px;">
+    <h2 style="margin:0 0 12px;">Apply Text Style</h2>
+
+    <label>Font family</label>
+    <select id="font" style="width:100%; margin:6px 0 12px;">
+      <option value="Raleway">Raleway</option>
+      <option value="Roboto">Roboto</option>
+      <option value="Montserrat">Montserrat</option>
+      <option value="Lato">Lato</option>
+      <option value="Open Sans">Open Sans</option>
+      <option value="Poppins">Poppins</option>
+      <option value="Source Sans Pro">Source Sans Pro</option>
+      <option value="">-- Custom (type below) --</option>
+    </select>
+
+    <input id="custom" type="text" placeholder="Or type a custom Google Font"
+           style="width:100%; margin-bottom:12px;">
+
+    <label>Weight</label>
+    <select id="weight" style="width:100%; margin:6px 0 12px;">
+      <option>Normal</option>
+      <option>Bold</option>
+    </select>
+
+    <label style="display:flex; align-items:center; gap:8px; margin:4px 0 16px;">
+      <input id="clearHL" type="checkbox" checked>
+      Remove text highlight
+    </label>
+
+    <button id="apply" style="width:100%;">Apply</button>
+    <div id="msg" style="margin-top:10px; color:#444;"></div>
+
+    <script>
+      document.getElementById('apply').addEventListener('click', () => {
+        const dropdown = document.getElementById('font').value.trim();
+        const custom = document.getElementById('custom').value.trim();
+        const fontFamily = custom || dropdown || 'Raleway';
+        const weight = document.getElementById('weight').value;
+        const removeHighlight = document.getElementById('clearHL').checked;
+
+        document.getElementById('apply').disabled = true;
+        document.getElementById('msg').textContent = 'Applying…';
+
+        google.script.run
+          .withSuccessHandler(res => {
+            document.getElementById('msg').textContent =
+              `Updated ${res.processed} text areas.`;
+            document.getElementById('apply').disabled = false;
+          })
+          .withFailureHandler(err => {
+            document.getElementById('msg').textContent = 'Error: ' + err.message;
+            document.getElementById('apply').disabled = false;
+          })
+          .applyTextStyle({ fontFamily, weight, removeHighlight });
+      });
+    </script>
+  </body>
+</html>
