@@ -1,5 +1,5 @@
-a=6
-b=2
+a=34
+b=7
 print('Addition : ', a + b)
 print('Subtraction : ', a - b)
 print('Multiplication : ', a * b)
