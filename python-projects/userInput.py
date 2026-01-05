@@ -1,0 +1,6 @@
+name = input("what is you name")
+age = input ("what is your age")
+print(f" hello {name} you are {age} years old lol" )
+num1 = float(input())
+num2 = float(input())
+print(num1 * num2)
