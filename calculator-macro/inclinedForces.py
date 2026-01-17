@@ -1,29 +1,14 @@
 # ==========================================
 # TI-Nspire CX CAS Friendly Physics Solver
-# - Up to 9 bodies (A..I)
-# - Incline or hanging
-# - Single-body acceleration (incline/hanging)
-# - Two-body rope: acceleration + tension
-# - Required force (horizontal, angled)
-# - System acceleration for N chosen bodies (same-accel)
-# - Body details now include:
-#     * Weight components Px, Py (a.k.a. mg*sin(theta), mg*cos(theta))
-#     * Normal force N
-#
-# NOTES / CONVENTIONS
-# - For incline bodies:
-#     Px = component of WEIGHT parallel to plane (m g sin(theta)) (magnitude, downhill)
-#     Py = component of WEIGHT perpendicular to plane (m g cos(theta)) (magnitude, into plane)
-#   Program also keeps a SIGNED "W along +axis" depending on whether you defined + as up or down.
-# - For hanging bodies:
-#     Weight acts along +axis (downward). No Px/Py (no plane).
-#
-# Stop execution anytime: Ctrl + C
+# (Updated: waits for ENTER after each result screen)
 # ==========================================
 
 import math
 
 PI = 3.141592653589793
+
+def pause():
+    input("\nPress ENTER to return to menu...")
 
 def deg2rad(d):
     return d * PI / 180.0
@@ -60,7 +45,6 @@ def ask_int(prompt, lo, hi, default_val=None):
             print("Enter an integer.")
 
 def ask_choice(prompt, a, b, default_val=None):
-    # 2-option choice
     while True:
         s = input(prompt).strip().lower()
         if s == "" and default_val is not None:
@@ -116,7 +100,6 @@ def make_body(name):
         pm = ask_choice("Force along +axis or -axis? (+/-): ", "+", "-", "+")
         F_dir = 1 if pm == "+" else -1
         if btype == "incline":
-            # 0 = along surface; + pulls away (reduces normal); - pushes in (increases normal)
             F_ang = ask_float("Force angle relative to surface deg (0=along, +=pull away) [0]: ", 0)
         else:
             F_ang = 0.0
@@ -139,8 +122,6 @@ def make_body(name):
 # ----------------------------
 
 def weight_components_magnitudes_incline(b, g):
-    # Px = mg sin(theta) (magnitude, parallel, downhill)
-    # Py = mg cos(theta) (magnitude, perpendicular into plane)
     theta = deg2rad(b["theta_deg"])
     m = b["m"]
     Px = m * g * math.sin(theta)
@@ -148,10 +129,7 @@ def weight_components_magnitudes_incline(b, g):
     return Px, Py
 
 def incline_W_components_signed(b, g):
-    # Returns (W_along_plus_axis, W_into_plane) where W_into_plane is magnitude into plane.
-    # W_into_plane equals Py.
     Px, Py = weight_components_magnitudes_incline(b, g)
-    # If +axis is uphill, gravity along axis is downhill => negative
     if b["uphill_pos"]:
         W_along = -Px
     else:
@@ -160,9 +138,6 @@ def incline_W_components_signed(b, g):
     return W_along, W_into
 
 def applied_components(b):
-    # For incline:
-    # F_along = +/- F cos(alpha)
-    # F_away  = +F sin(alpha) (positive pulls away from surface)
     F = b["F"]
     if abs(F) < 1e-12:
         return 0.0, 0.0
@@ -172,36 +147,27 @@ def applied_components(b):
     return F_along, F_away
 
 def normal_force(b, g):
-    # Only for incline bodies:
-    # N = Py - F_away
-    W_along, Py = incline_W_components_signed(b, g)
-    F_along, F_away = applied_components(b)
-    N = Py - F_away
-    return N
+    _, Py = incline_W_components_signed(b, g)
+    _, F_away = applied_components(b)
+    return Py - F_away
 
 def single_accel(b, g):
-    # Acceleration along the body's +axis.
-    # Incline uses kinetic friction mu_k.
     m = b["m"]
 
     if b["type"] == "hanging":
-        # +axis downward
         W = m * g
-        Fapp = b["F_dir"] * b["F"]  # + if along +axis (down)
+        Fapp = b["F_dir"] * b["F"]
         a = (W + Fapp) / m
         return a, 0.0, 0.0, "hanging", 0.0, 0.0
 
-    # incline
-    W_along, Py = incline_W_components_signed(b, g)
+    W_along, _ = incline_W_components_signed(b, g)
     Px, Py_mag = weight_components_magnitudes_incline(b, g)
-    F_along, F_away = applied_components(b)
+    F_along, _ = applied_components(b)
     N = normal_force(b, g)
 
     N_eff = N if N > 0 else 0.0
-
     F_nofric = W_along + F_along
 
-    # Guess motion direction from no-friction net
     motion_dir = sgn(F_nofric)
     if motion_dir == 0:
         motion_dir = 1
@@ -209,7 +175,6 @@ def single_accel(b, g):
     f = -motion_dir * b["mu_k"] * N_eff
     a = (F_nofric + f) / m
 
-    # If acceleration flips direction, redo friction direction once
     if sgn(a) != 0 and sgn(a) != motion_dir:
         motion_dir = sgn(a)
         f = -motion_dir * b["mu_k"] * N_eff
@@ -218,7 +183,7 @@ def single_accel(b, g):
     return a, N, f, "incline", Px, Py_mag
 
 # ----------------------------
-# Detailed printout (includes Px, Py, N)
+# Detailed printout
 # ----------------------------
 
 def body_details(b, g):
@@ -241,7 +206,7 @@ def body_details(b, g):
     print("+ direction is", ("uphill" if b["uphill_pos"] else "downhill"))
 
     Px, Py = weight_components_magnitudes_incline(b, g)
-    W_along, W_into = incline_W_components_signed(b, g)
+    W_along, _ = incline_W_components_signed(b, g)
     F_along, F_away = applied_components(b)
     N = normal_force(b, g)
 
@@ -275,11 +240,6 @@ def body_details(b, g):
 # ----------------------------
 
 def two_body_rope(A, B, g):
-    # Convention:
-    #   mA a = F_A_noT - T
-    #   mB a = F_B_noT + T
-    # Uses kinetic friction for incline bodies.
-
     def drive_nofric(b):
         if b["type"] == "hanging":
             return b["m"] * g + b["F_dir"] * b["F"]
@@ -302,15 +262,15 @@ def two_body_rope(A, B, g):
     if motion_dir == 0:
         motion_dir = 1
 
-    FA, NA, fA = F_noT(A, motion_dir)
-    FB, NB, fB = F_noT(B, motion_dir)
+    FA, _, _ = F_noT(A, motion_dir)
+    FB, _, _ = F_noT(B, motion_dir)
 
     a = (FA + FB) / (A["m"] + B["m"])
 
     if sgn(a) != 0 and sgn(a) != motion_dir:
         motion_dir = sgn(a)
-        FA, NA, fA = F_noT(A, motion_dir)
-        FB, NB, fB = F_noT(B, motion_dir)
+        FA, _, _ = F_noT(A, motion_dir)
+        FB, _, _ = F_noT(B, motion_dir)
         a = (FA + FB) / (A["m"] + B["m"])
 
     T = FA - A["m"] * a
@@ -335,30 +295,25 @@ def required_force_horizontal(g):
 
     c = math.cos(alpha)
     s = math.sin(alpha)
-
     denom = c + motion * mu * s
+
     if abs(denom) < 1e-12:
         print("Cannot solve (bad angle/params; denominator ~ 0).")
         return
 
-    # m a = F c - motion*mu*(mg - F s)
     F = (m * a + motion * mu * m * g) / denom
     print("Required force magnitude F =", F, "N")
     print("Apply along the desired motion direction.")
     print("")
 
 # ----------------------------
-# System acceleration for N bodies (same-accel system)
+# System acceleration for N bodies
 # ----------------------------
 
 def system_accel_multiple(bodies_list, g):
-    # Assumes all chosen bodies share same acceleration magnitude.
-    # Uses kinetic friction for incline bodies.
-
     total_F = 0.0
     total_m = 0.0
 
-    # Guess system motion ignoring friction
     guess = 0.0
     for b in bodies_list:
         if b["type"] == "hanging":
@@ -372,7 +327,6 @@ def system_accel_multiple(bodies_list, g):
     if motion_dir == 0:
         motion_dir = 1
 
-    # Compute with friction
     for b in bodies_list:
         m = b["m"]
         total_m += m
@@ -391,7 +345,6 @@ def system_accel_multiple(bodies_list, g):
 
     a = total_F / total_m
 
-    # redo once if direction flips
     if sgn(a) != 0 and sgn(a) != motion_dir:
         motion_dir = sgn(a)
         total_F = 0.0
@@ -446,16 +399,18 @@ def main():
             i = ask_int("Body number 1-9: ", 1, 9) - 1
             name = chr(ord("A") + i)
             bodies[i] = make_body(name)
+            pause()
 
         elif ch == 2:
             show_bodies(bodies)
+            pause()
 
         elif ch == 3:
             show_bodies(bodies)
             i = ask_int("Body number 1-9: ", 1, 9) - 1
             b = bodies[i]
             if b is None:
-                print("Empty slot.\n")
+                print("Empty slot.")
             else:
                 a, N, f, mode, Px, Py = single_accel(b, g)
                 print("")
@@ -469,6 +424,7 @@ def main():
                     if N < 0:
                         print("WARNING: N < 0 => would lose contact with surface.")
                 print("")
+            pause()
 
         elif ch == 4:
             show_bodies(bodies)
@@ -477,7 +433,7 @@ def main():
             A = bodies[ia]
             B = bodies[ib]
             if A is None or B is None:
-                print("One slot empty.\n")
+                print("One slot empty.")
             else:
                 a, T = two_body_rope(A, B, g)
                 print("")
@@ -487,9 +443,11 @@ def main():
                 print("tension T =", T, "N")
                 print("If sign seems wrong, swap A/B or redefine + direction for incline bodies.")
                 print("")
+            pause()
 
         elif ch == 5:
             required_force_horizontal(g)
+            pause()
 
         elif ch == 6:
             show_bodies(bodies)
@@ -500,7 +458,7 @@ def main():
             for k in range(n):
                 idx = ask_int("Select body number (1-9): ", 1, 9) - 1
                 if bodies[idx] is None:
-                    print("That body slot is empty. Cancelled.\n")
+                    print("That body slot is empty. Cancelled.")
                     ok = False
                     break
                 chosen.append(bodies[idx])
@@ -511,14 +469,16 @@ def main():
                 print("System acceleration a =", a, "m/s^2")
                 print("Interpreted along each chosen body's +axis definition.")
                 print("")
+            pause()
 
         elif ch == 7:
             show_bodies(bodies)
             i = ask_int("Body number 1-9: ", 1, 9) - 1
             b = bodies[i]
             if b is None:
-                print("Empty slot.\n")
+                print("Empty slot.")
             else:
                 body_details(b, g)
+            pause()
 
 main()
