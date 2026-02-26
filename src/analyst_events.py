@@ -170,8 +170,29 @@ def _normalize_event_frame(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
 
     frame = raw.copy()
     if isinstance(frame.index, pd.DatetimeIndex):
-        frame = frame.reset_index().rename(columns={"index": "date"})
-    elif "date" not in frame.columns:
+        frame = frame.reset_index()
+
+    # yfinance often names this column GradeDate (not "date"), so normalize robustly.
+    if "date" not in frame.columns:
+        normalized_col_lookup = {
+            re.sub(r"[\s_]", "", col).lower(): col for col in frame.columns
+        }
+        date_source = (
+            normalized_col_lookup.get("date")
+            or normalized_col_lookup.get("gradedate")
+            or normalized_col_lookup.get("datetime")
+            or normalized_col_lookup.get("timestamp")
+        )
+        if date_source:
+            frame = frame.rename(columns={date_source: "date"})
+        elif len(frame.columns) > 0:
+            # Fallback: first column after reset_index is usually the timestamp field.
+            first_col = frame.columns[0]
+            parsed_first = pd.to_datetime(frame[first_col], errors="coerce", utc=True)
+            if parsed_first.notna().any():
+                frame = frame.rename(columns={first_col: "date"})
+
+    if "date" not in frame.columns:
         return pd.DataFrame(columns=EVENT_COLUMNS)
 
     normalized_col_lookup = {
@@ -189,10 +210,10 @@ def _normalize_event_frame(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
             col_map[canonical] = source
 
     output = pd.DataFrame()
-    output["ticker"] = str(ticker).upper().strip()
     output["date"] = pd.to_datetime(frame["date"], errors="coerce", utc=True).dt.tz_convert(
         None
     )
+    output["ticker"] = str(ticker).upper().strip()
     for column in ["action", "fromGrade", "toGrade", "firm"]:
         source_col = col_map.get(column)
         output[column] = frame[source_col] if source_col else None
@@ -247,6 +268,7 @@ def ensure_events_cache(
     cache_path: str,
     sleep_seconds: float = 0.05,
     refresh: bool = False,
+    fetch_missing: bool = True,
     logger: Callable[[str], None] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     tickers = [str(t).upper().strip() for t in universe if str(t).strip()]
@@ -258,11 +280,20 @@ def ensure_events_cache(
         cached = pd.DataFrame(columns=EVENT_COLUMNS)
 
     cached_have = set(cached["ticker"].unique()) if not cached.empty else set()
-    missing_tickers = [ticker for ticker in tickers if ticker not in cached_have]
+    missing_tickers_all = [ticker for ticker in tickers if ticker not in cached_have]
+    missing_tickers = missing_tickers_all if fetch_missing else []
     _log(
         logger,
-        f"Analyst events cache path: {cache_path} | missing tickers: {len(missing_tickers)}",
+        (
+            f"Analyst events cache path: {cache_path} | missing tickers: {len(missing_tickers_all)} "
+            f"| fetch_missing={bool(fetch_missing)}"
+        ),
     )
+    if missing_tickers_all and not fetch_missing:
+        _log(
+            logger,
+            "Auto-fetch missing analyst events is disabled; using cached events only for this run.",
+        )
 
     fetched_parts: list[pd.DataFrame] = []
     for index, ticker in enumerate(missing_tickers, start=1):
@@ -274,7 +305,11 @@ def ensure_events_cache(
             time.sleep(float(sleep_seconds))
 
     if fetched_parts:
-        cached = pd.concat([cached, *fetched_parts], ignore_index=True)
+        cached = (
+            pd.concat(fetched_parts, ignore_index=True)
+            if cached.empty
+            else pd.concat([cached, *fetched_parts], ignore_index=True)
+        )
         cached = cached.drop_duplicates(subset=EVENT_COLUMNS).reset_index(drop=True)
         save_events_cache(cached, cache_path)
         _log(logger, f"Saved analyst events cache with {len(cached)} rows.")
@@ -291,6 +326,7 @@ def ensure_events_cache(
 
     stats = {
         "requested_tickers": len(tickers),
+        "missing_tickers_in_cache": len(missing_tickers_all),
         "fetched_tickers": len(missing_tickers),
         "cache_rows": int(len(cached)),
         "tickers_without_events": len(missing_event_tickers),

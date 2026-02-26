@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Iterable
@@ -42,6 +43,234 @@ def _read_prices_cached(absolute_path: str) -> pd.DataFrame:
 def load_prices_parquet(path: str) -> pd.DataFrame:
     absolute = str(Path(path).expanduser().resolve())
     return _read_prices_cached(absolute).copy()
+
+
+def _normalize_prices_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=["ticker", "date", "adj_close"])
+    out = frame.copy()
+    for col in ["ticker", "date", "adj_close"]:
+        if col not in out.columns:
+            out[col] = np.nan
+    out = out[["ticker", "date", "adj_close"]].copy()
+    out["ticker"] = out["ticker"].astype(str).str.upper().str.strip()
+    out["date"] = pd.to_datetime(out["date"], errors="coerce")
+    out["adj_close"] = pd.to_numeric(out["adj_close"], errors="coerce")
+    out = out.dropna(subset=["ticker", "date", "adj_close"]).reset_index(drop=True)
+    out = out[out["adj_close"] > 0].reset_index(drop=True)
+    out = out.sort_values(["ticker", "date"]).drop_duplicates(
+        subset=["ticker", "date"], keep="last"
+    )
+    return out.reset_index(drop=True)
+
+
+def _load_prices_cache(cache_path: str) -> pd.DataFrame:
+    if not os.path.exists(cache_path):
+        return pd.DataFrame(columns=["ticker", "date", "adj_close"])
+    if str(cache_path).lower().endswith(".parquet"):
+        try:
+            return _normalize_prices_frame(pd.read_parquet(cache_path))
+        except Exception:  # noqa: BLE001
+            csv_fallback = os.path.splitext(cache_path)[0] + ".csv"
+            if os.path.exists(csv_fallback):
+                return _normalize_prices_frame(pd.read_csv(csv_fallback))
+            return pd.DataFrame(columns=["ticker", "date", "adj_close"])
+    try:
+        return _normalize_prices_frame(pd.read_csv(cache_path))
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame(columns=["ticker", "date", "adj_close"])
+
+
+def _save_prices_cache(frame: pd.DataFrame, cache_path: str) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(cache_path)), exist_ok=True)
+    out = _normalize_prices_frame(frame)
+    if str(cache_path).lower().endswith(".parquet"):
+        try:
+            out.to_parquet(cache_path, index=False)
+            return
+        except Exception:  # noqa: BLE001
+            csv_fallback = os.path.splitext(cache_path)[0] + ".csv"
+            out.to_csv(csv_fallback, index=False)
+            return
+    out.to_csv(cache_path, index=False)
+
+
+def _missing_prices_cache_path(cache_path: str) -> str:
+    path = Path(cache_path).expanduser().resolve()
+    suffix = "".join(path.suffixes)
+    stem = path.name[: -len(suffix)] if suffix else path.name
+    return str(path.with_name(f"{stem}_missing_tickers.csv"))
+
+
+def _load_missing_price_tickers(cache_path: str) -> set[str]:
+    path = _missing_prices_cache_path(cache_path)
+    if not os.path.exists(path):
+        return set()
+    try:
+        frame = pd.read_csv(path)
+    except Exception:  # noqa: BLE001
+        return set()
+    if "ticker" not in frame.columns:
+        return set()
+    tickers = frame["ticker"].astype(str).str.upper().str.strip()
+    return {ticker for ticker in tickers if ticker}
+
+
+def _save_missing_price_tickers(cache_path: str, tickers: set[str]) -> None:
+    path = _missing_prices_cache_path(cache_path)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    out = pd.DataFrame({"ticker": sorted(tickers)})
+    out.to_csv(path, index=False)
+
+
+def _extract_downloaded_close(history: pd.DataFrame) -> pd.Series | None:
+    if history is None or history.empty:
+        return None
+    if isinstance(history.columns, pd.MultiIndex):
+        lvl0 = history.columns.get_level_values(0)
+        if "Close" in lvl0:
+            sub = history["Close"]
+            if isinstance(sub, pd.DataFrame):
+                return sub.iloc[:, 0]
+            return sub
+        if "Adj Close" in lvl0:
+            sub = history["Adj Close"]
+            if isinstance(sub, pd.DataFrame):
+                return sub.iloc[:, 0]
+            return sub
+        return None
+    if "Close" in history.columns:
+        return history["Close"]
+    if "Adj Close" in history.columns:
+        return history["Adj Close"]
+    return None
+
+
+def fetch_prices_from_yfinance(
+    tickers: Iterable[str],
+    start_date: str | pd.Timestamp,
+    end_date: str | pd.Timestamp,
+    cache_path: str = "data_out/yfinance_prices_cache.parquet",
+    refresh: bool = False,
+    fetch_missing: bool = True,
+    sleep_seconds: float = 0.0,
+    logger: Callable[[str], None] | None = None,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    tickers_clean = [str(t).upper().strip() for t in tickers if str(t).strip()]
+    tickers_clean = list(dict.fromkeys(tickers_clean))
+    if not tickers_clean:
+        raise ValueError("No tickers supplied for yfinance price fetch.")
+
+    start_ts = pd.Timestamp(start_date).normalize()
+    end_ts = pd.Timestamp(end_date).normalize()
+    if end_ts <= start_ts:
+        raise ValueError("end_date must be after start_date for price fetch.")
+
+    cached = pd.DataFrame(columns=["ticker", "date", "adj_close"]) if refresh else _load_prices_cache(cache_path)
+    known_missing_tickers = set() if refresh else _load_missing_price_tickers(cache_path)
+    fetch_candidates = [ticker for ticker in tickers_clean if ticker not in known_missing_tickers]
+    skipped_known_missing = [ticker for ticker in tickers_clean if ticker in known_missing_tickers]
+
+    have_cov: dict[str, bool] = {}
+    if not cached.empty:
+        span = cached.groupby("ticker")["date"].agg(["min", "max"])
+        for ticker in fetch_candidates:
+            if ticker in span.index:
+                min_d = pd.Timestamp(span.loc[ticker, "min"]).normalize()
+                max_d = pd.Timestamp(span.loc[ticker, "max"]).normalize()
+                have_cov[ticker] = min_d <= start_ts and max_d >= end_ts
+            else:
+                have_cov[ticker] = False
+    else:
+        have_cov = {ticker: False for ticker in fetch_candidates}
+
+    coverage_gap_tickers = [ticker for ticker in fetch_candidates if not have_cov.get(ticker, False)]
+    missing = coverage_gap_tickers if fetch_missing else []
+    _log(
+        logger,
+        (
+            f"Price cache: {cache_path} | requested={len(tickers_clean)} "
+            f"| coverage_gap={len(coverage_gap_tickers)} | missing_fetch={len(missing)} "
+            f"| skipped_known_missing={len(skipped_known_missing)} | fetch_missing={bool(fetch_missing)}"
+        ),
+    )
+    if coverage_gap_tickers and not fetch_missing:
+        _log(
+            logger,
+            "Auto-fetch missing prices is disabled; using cached data only for this run.",
+        )
+
+    fetched_parts: list[pd.DataFrame] = []
+    tickers_with_no_price_data: set[str] = set()
+    fetched_success_tickers: set[str] = set()
+    fetch_start = (start_ts - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
+    fetch_end = (end_ts + pd.Timedelta(days=7)).strftime("%Y-%m-%d")
+    for idx, ticker in enumerate(missing, start=1):
+        _log(logger, f"Fetching prices [{idx}/{len(missing)}]: {ticker}")
+        try:
+            history = yf.download(
+                ticker,
+                start=fetch_start,
+                end=fetch_end,
+                auto_adjust=True,
+                progress=False,
+                threads=False,
+            )
+            close = _extract_downloaded_close(history)
+            if close is None or close.empty:
+                tickers_with_no_price_data.add(ticker)
+                _log(logger, f"No price data returned for {ticker}; will skip in future runs unless refresh is enabled.")
+                continue
+            part = close.rename("adj_close").to_frame().reset_index()
+            part = part.rename(columns={part.columns[0]: "date"})
+            part["ticker"] = ticker
+            part = part[["ticker", "date", "adj_close"]]
+            fetched_parts.append(part)
+            fetched_success_tickers.add(ticker)
+        except Exception as exc:  # noqa: BLE001
+            _log(logger, f"Failed prices fetch for {ticker}: {exc}")
+        if sleep_seconds > 0:
+            time.sleep(float(sleep_seconds))
+
+    if fetched_parts:
+        fetched = _normalize_prices_frame(pd.concat(fetched_parts, ignore_index=True))
+        cached = fetched if cached.empty else _normalize_prices_frame(pd.concat([cached, fetched], ignore_index=True))
+        _save_prices_cache(cached, cache_path=cache_path)
+        _log(logger, f"Saved price cache with {len(cached):,} rows.")
+    elif refresh:
+        _save_prices_cache(cached, cache_path=cache_path)
+
+    # Persist a list of symbols that consistently return no price history so repeated runs skip them.
+    known_missing_tickers = set(known_missing_tickers)
+    known_missing_tickers.update(tickers_with_no_price_data)
+    known_missing_tickers.difference_update(fetched_success_tickers)
+    _save_missing_price_tickers(cache_path=cache_path, tickers=known_missing_tickers)
+
+    selected = cached[cached["ticker"].isin(tickers_clean)].copy()
+    selected = selected[
+        (selected["date"] >= start_ts - pd.Timedelta(days=7))
+        & (selected["date"] <= end_ts + pd.Timedelta(days=7))
+    ].copy()
+    selected = _normalize_prices_frame(selected)
+
+    covered_tickers = selected.groupby("ticker").size().index.tolist() if not selected.empty else []
+    missing_data_tickers = [ticker for ticker in tickers_clean if ticker not in set(covered_tickers)]
+    stats = {
+        "requested_tickers": len(tickers_clean),
+        "fetched_tickers": len(missing),
+        "coverage_gap_tickers": len(coverage_gap_tickers),
+        "missing_fetch_enabled": bool(fetch_missing),
+        "known_missing_tickers_skipped": len(skipped_known_missing),
+        "known_missing_tickers_total": len(known_missing_tickers),
+        "cache_rows_total": int(len(cached)),
+        "selected_rows": int(len(selected)),
+        "tickers_with_prices": len(covered_tickers),
+        "tickers_without_prices": len(missing_data_tickers),
+        "missing_price_tickers": missing_data_tickers,
+        "known_missing_price_tickers": sorted(known_missing_tickers),
+        "cache_path": cache_path,
+    }
+    return selected.reset_index(drop=True), stats
 
 
 def load_universe_csv(path: str) -> list[str]:

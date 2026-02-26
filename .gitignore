@@ -419,3 +419,9 @@ FodyWeavers.xsd
 trade-imbalance-ranking/kaggleDataset.py
 data_out/prices_top1000_2y_daily.parquet
 data_out/top_1000_tickers.csv
+ud_events_cache_top1000.csv
+data_out/finnhub_analyst_ratings.csv
+data_out/ud_events_cache_test.csv
+data_out/yfinance_prices_cache_missing_tickers.csv
+data_out/yfinance_prices_cache.parquet
+benchmark_SPY.parquet
