@@ -417,3 +417,5 @@ FodyWeavers.xsd
 *.msm
 *.msp
 trade-imbalance-ranking/kaggleDataset.py
+data_out/prices_top1000_2y_daily.parquet
+data_out/top_1000_tickers.csv
