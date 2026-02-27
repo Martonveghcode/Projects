@@ -865,7 +865,7 @@ def _prepare_for_backtest_inputs(
 
     prices_tickers = list(dict.fromkeys([*universe, str(settings["benchmark_ticker"]).upper().strip()]))
     ui_log(
-        f"Fetching prices from yfinance for {len(prices_tickers):,} tickers "
+        f"Fetching prices for {len(prices_tickers):,} tickers "
         f"({settings['start_date']}..{settings['end_date']}) "
         f"| provider={settings.get('price_provider', 'yfinance')} "
         f"| auto_fetch_missing_prices={bool(settings['auto_fetch_missing_prices'])}..."
@@ -931,8 +931,13 @@ def _prepare_for_backtest_inputs(
     analyst_stats: dict[str, object] = {"source": settings["analyst_source"]}
     signal_lag_months = int(settings.get("stress_signal_lag_months", 0))
     lag_offset = pd.DateOffset(months=signal_lag_months)
+    backtest_start_ts = pd.Timestamp(settings["start_date"]).normalize()
+    backtest_end_ts = pd.Timestamp(settings["end_date"]).normalize()
+    coverage_start = backtest_start_ts - lag_offset - pd.Timedelta(days=int(settings["lookback_days"]))
+    effective_analyst_source = str(settings["analyst_source"])
 
-    if settings["analyst_source"] == "finnhub_ratings":
+    def _load_finnhub(enforce_window: bool) -> int:
+        nonlocal finnhub_ratings, analyst_stats
         if not finnhub_api_key.strip():
             raise ValueError("Finnhub API key is required for Finnhub analyst ratings.")
         finnhub_ratings, analyst_stats = ensure_finnhub_ratings_cache(
@@ -953,13 +958,11 @@ def _prepare_for_backtest_inputs(
             retry_round_cooldown_sec=float(settings["finnhub_retry_round_cooldown_seconds"]),
             logger=ui_log,
         )
-        backtest_start_ts = pd.Timestamp(settings["start_date"]).normalize()
-        backtest_end_ts = pd.Timestamp(settings["end_date"]).normalize()
-        coverage_start = backtest_start_ts - lag_offset - pd.Timedelta(days=int(settings["lookback_days"]))
         ratings_period = pd.to_datetime(finnhub_ratings["period"], errors="coerce")
         ratings_window = finnhub_ratings[
             (ratings_period >= coverage_start) & (ratings_period <= backtest_end_ts)
         ].copy()
+        analyst_stats["rows_in_backtest_window"] = int(len(ratings_window))
         analyst_stats["tickers_with_data_in_backtest_window"] = int(
             ratings_window["ticker"].nunique() if not ratings_window.empty else 0
         )
@@ -970,13 +973,17 @@ def _prepare_for_backtest_inputs(
             f"rows_selected={analyst_stats.get('cache_rows_selected', 0):,}, "
             f"tickers_without_ratings={analyst_stats.get('tickers_without_ratings', 0)}"
         )
-        if enforce_coverage and int(analyst_stats.get("rows_in_backtest_window", 0) or 0) == 0:
+        rows_in_window = int(analyst_stats.get("rows_in_backtest_window", 0) or 0)
+        if enforce_window and rows_in_window == 0:
             raise ValueError(
                 "No Finnhub analyst ratings overlap the selected backtest window "
                 f"{settings['start_date']}..{settings['end_date']}. "
                 f"Available cache period is {analyst_stats.get('period_min')}..{analyst_stats.get('period_max')}."
             )
-    else:
+        return rows_in_window
+
+    def _load_yfinance(enforce_window: bool) -> int:
+        nonlocal events, analyst_stats
         events, analyst_stats = ensure_events_cache(
             universe=universe,
             cache_path=str(settings["events_cache_path"]),
@@ -985,9 +992,6 @@ def _prepare_for_backtest_inputs(
             fetch_missing=bool(settings["auto_fetch_missing_analyst"]),
             logger=ui_log,
         )
-        backtest_start_ts = pd.Timestamp(settings["start_date"]).normalize()
-        backtest_end_ts = pd.Timestamp(settings["end_date"]).normalize()
-        coverage_start = backtest_start_ts - lag_offset - pd.Timedelta(days=int(settings["lookback_days"]))
         events_dates = pd.to_datetime(events["date"], errors="coerce")
         events_window = events[
             (events_dates >= coverage_start) & (events_dates <= backtest_end_ts)
@@ -1005,12 +1009,43 @@ def _prepare_for_backtest_inputs(
             f"Rows: {analyst_stats['cache_rows']:,}, "
             f"tickers without events: {analyst_stats['tickers_without_events']}"
         )
-        if enforce_coverage and int(analyst_stats.get("rows_in_backtest_window", 0) or 0) == 0:
+        rows_in_window = int(analyst_stats.get("rows_in_backtest_window", 0) or 0)
+        if enforce_window and rows_in_window == 0:
             raise ValueError(
                 "No yfinance analyst events overlap required signal window "
                 f"{coverage_start.date()}..{backtest_end_ts.date()} "
                 "(backtest window plus lookback)."
             )
+        return rows_in_window
+
+    if settings["analyst_source"] == "finnhub_ratings":
+        _load_finnhub(enforce_window=enforce_coverage)
+        effective_analyst_source = "finnhub_ratings"
+    elif settings["analyst_source"] == "yfinance_events":
+        _load_yfinance(enforce_window=enforce_coverage)
+        effective_analyst_source = "yfinance_events"
+    else:
+        used_finnhub = False
+        if finnhub_api_key.strip():
+            try:
+                rows_finnhub = _load_finnhub(enforce_window=False)
+                if rows_finnhub > 0:
+                    used_finnhub = True
+                    effective_analyst_source = "finnhub_ratings"
+                    analyst_stats["source"] = "finnhub_ratings(auto)"
+                else:
+                    ui_log("Auto analyst source: Finnhub has no rows in window, falling back to yfinance.")
+            except Exception as exc:  # noqa: BLE001
+                ui_log(f"Auto analyst source: Finnhub failed ({exc}), falling back to yfinance.")
+        else:
+            ui_log("Auto analyst source: Finnhub API key missing, falling back to yfinance.")
+
+        if not used_finnhub:
+            _load_yfinance(enforce_window=enforce_coverage)
+            effective_analyst_source = "yfinance_events"
+            analyst_stats["source"] = "yfinance_events(auto_fallback)"
+
+    ui_log(f"Effective analyst signal source: {effective_analyst_source}")
 
     return {
         "prices": prices,
@@ -1018,6 +1053,7 @@ def _prepare_for_backtest_inputs(
         "universe": universe,
         "events": events,
         "finnhub_ratings": finnhub_ratings,
+        "effective_analyst_source": effective_analyst_source,
         "universe_stats": universe_stats,
         "analyst_stats": analyst_stats,
     }
@@ -1093,6 +1129,9 @@ if run_clicked:
             universe = prepared["universe"]
             events = prepared["events"]
             finnhub_ratings = prepared["finnhub_ratings"]
+            effective_analyst_source = str(
+                prepared.get("effective_analyst_source", settings["analyst_source"])
+            )
             universe_stats = prepared["universe_stats"]
             analyst_stats = prepared["analyst_stats"]
 
@@ -1128,7 +1167,7 @@ if run_clicked:
                 top_n=settings["top_n"],
                 bottom_n=effective_bottom_n,
                 lookback_days=settings["lookback_days"],
-                signal_source=settings["analyst_source"],
+                signal_source=effective_analyst_source,
                 ranking_mode=settings["ranking_mode"],
                 consistency_weight=settings["consistency_weight"],
                 consistency_lookback_months=settings["consistency_lookback_months"],
@@ -1144,11 +1183,13 @@ if run_clicked:
                 action_weights=settings["action_weights"],
                 logger=ui_log,
             )
+            settings_used = dict(settings)
+            settings_used["effective_analyst_source"] = effective_analyst_source
 
         st.session_state["last_run"] = {
             "result": result,
             "logs": logs,
-            "settings": settings,
+            "settings": settings_used,
             "analyst_stats": analyst_stats,
             "universe_stats": universe_stats,
             "price_stats": price_stats,
@@ -1157,6 +1198,7 @@ if run_clicked:
                 "universe": universe,
                 "events": events,
                 "finnhub_ratings": finnhub_ratings,
+                "effective_analyst_source": effective_analyst_source,
             },
             "benchmark_source": benchmark_source,
             "error": None,
@@ -1166,6 +1208,7 @@ if run_clicked:
             "universe": universe,
             "events": events,
             "finnhub_ratings": finnhub_ratings,
+            "effective_analyst_source": effective_analyst_source,
         }
     except Exception as exc:  # noqa: BLE001
         st.session_state["last_run"] = {
@@ -1201,7 +1244,7 @@ if last_coverage is not None:
             {
                 "universe_source": universe_stats.get("source"),
                 "universe_selected_tickers": universe_stats.get("selected_tickers"),
-                "price_provider": settings_used.get("price_provider"),
+                "price_provider": (last_coverage.get("settings") or {}).get("price_provider"),
                 "price_tickers_with_data": price_stats.get("tickers_with_prices"),
                 "price_tickers_without_data": price_stats.get("tickers_without_prices"),
                 "price_provider_alpaca_success": price_stats.get("alpaca_success"),
@@ -1367,9 +1410,15 @@ else:
                 refresh_settings["refresh_prices_cache"] = True
                 refresh_settings["auto_fetch_missing_prices"] = True
                 refresh_settings["auto_fetch_missing_analyst"] = True
-                if str(refresh_settings.get("analyst_source", "yfinance_events")) == "finnhub_ratings":
+                refresh_analyst_source = str(
+                    refresh_settings.get("analyst_source", "yfinance_events")
+                )
+                if refresh_analyst_source == "finnhub_ratings":
                     refresh_settings["refresh_finnhub_ratings_cache"] = True
+                elif refresh_analyst_source == "yfinance_events":
+                    refresh_settings["refresh_events_cache"] = True
                 else:
+                    refresh_settings["refresh_finnhub_ratings_cache"] = True
                     refresh_settings["refresh_events_cache"] = True
 
                 with st.spinner("Refreshing latest data for recommendations..."):
@@ -1386,6 +1435,10 @@ else:
                     "universe": latest_prepared["universe"],
                     "events": latest_prepared["events"],
                     "finnhub_ratings": latest_prepared["finnhub_ratings"],
+                    "effective_analyst_source": latest_prepared.get(
+                        "effective_analyst_source",
+                        refresh_settings.get("analyst_source", "yfinance_events"),
+                    ),
                 }
                 st.success("Latest data refreshed. You can now generate recommendations.")
             except Exception as exc:  # noqa: BLE001
@@ -1401,6 +1454,17 @@ else:
             universe_in = prepared_inputs.get("universe")
             events_in = prepared_inputs.get("events")
             finnhub_in = prepared_inputs.get("finnhub_ratings")
+            effective_rec_signal_source = str(
+                prepared_inputs.get(
+                    "effective_analyst_source",
+                    settings_used.get(
+                        "effective_analyst_source",
+                        settings_used.get("analyst_source", "yfinance_events"),
+                    ),
+                )
+            )
+            if effective_rec_signal_source not in {"yfinance_events", "finnhub_ratings"}:
+                effective_rec_signal_source = "yfinance_events"
             if prices_in is None or universe_in is None or events_in is None:
                 st.error("Run a backtest first to prepare inputs for recommendations.")
             else:
@@ -1417,7 +1481,7 @@ else:
                         top_n=int(recommendation_top_n),
                         bottom_n=int(effective_rec_bottom_n),
                         lookback_days=int(settings_used.get("lookback_days", 90)),
-                        signal_source=str(settings_used.get("analyst_source", "yfinance_events")),
+                        signal_source=effective_rec_signal_source,
                         ranking_mode=str(settings_used.get("ranking_mode", "blend_with_consistency")),
                         consistency_weight=float(settings_used.get("consistency_weight", 0.35)),
                         consistency_lookback_months=int(settings_used.get("consistency_lookback_months", 12)),

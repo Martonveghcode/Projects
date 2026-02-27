@@ -1,5 +1,6 @@
 {
   "prices_cache_path": "data_out/yfinance_prices_cache.parquet",
+  "price_provider": "yfinance",
   "refresh_prices_cache": false,
   "universe_source": "csv",
   "universe_csv": "data_out/top_1000_tickers.csv",
@@ -147,5 +148,6 @@
     "downgrade": -1.0,
     "initiat": 0.25,
     "default": 0.0
-  }
+  },
+  "alpaca_timeout_seconds": 20
 }
