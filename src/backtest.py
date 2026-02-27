@@ -713,3 +713,108 @@ def run_backtest(
         "benchmark_stats": benchmark_stats,
         "diagnostics": diagnostics,
     }
+
+
+def recommend_next_month(
+    *,
+    prices: pd.DataFrame,
+    universe: list[str],
+    events: pd.DataFrame,
+    signal_month: str | pd.Timestamp,
+    months_ahead: int = 1,
+    top_n: int,
+    bottom_n: int,
+    lookback_days: int,
+    signal_source: str = "yfinance_events",
+    ranking_mode: str = "signal_only",
+    consistency_weight: float = 0.35,
+    consistency_lookback_months: int = 12,
+    consistency_min_observations: int = 3,
+    signal_lag_months: int = 0,
+    randomize_signals: bool = False,
+    random_seed: int = 42,
+    transaction_cost_bps: float = 0.0,
+    short_borrow_cost_bps_monthly: float = 0.0,
+    finnhub_ratings: pd.DataFrame | None = None,
+    grade_mapping_rules: list[dict[str, object]] | None = None,
+    action_weights: dict[str, float] | None = None,
+    logger: Callable[[str], None] | None = None,
+) -> dict[str, object]:
+    signal_month_start = pd.Timestamp(signal_month).normalize().replace(day=1)
+    months_ahead = max(1, int(months_ahead))
+    last_signal_month_needed = signal_month_start + pd.DateOffset(months=months_ahead - 1)
+
+    min_price_date = pd.Timestamp(prices["date"].min()).normalize().replace(day=1)
+    backtest_result = run_backtest(
+        prices=prices,
+        universe=universe,
+        events=events,
+        start_date=min_price_date,
+        end_date=last_signal_month_needed,
+        top_n=top_n,
+        bottom_n=bottom_n,
+        lookback_days=lookback_days,
+        signal_source=signal_source,
+        ranking_mode=ranking_mode,
+        consistency_weight=consistency_weight,
+        consistency_lookback_months=consistency_lookback_months,
+        consistency_min_observations=consistency_min_observations,
+        signal_lag_months=signal_lag_months,
+        randomize_signals=randomize_signals,
+        random_seed=random_seed,
+        transaction_cost_bps=transaction_cost_bps,
+        short_borrow_cost_bps_monthly=short_borrow_cost_bps_monthly,
+        finnhub_ratings=finnhub_ratings,
+        benchmark_prices=None,
+        grade_mapping_rules=grade_mapping_rules,
+        action_weights=action_weights,
+        logger=logger,
+    )
+
+    monthly = backtest_result["monthly_results"].copy()
+    monthly = monthly.sort_values("month").reset_index(drop=True)
+    if monthly.empty:
+        raise RuntimeError("Could not generate recommendations: no monthly rows were produced.")
+
+    recommendations: list[dict[str, object]] = []
+    for step in range(1, months_ahead + 1):
+        signal_month_requested = signal_month_start + pd.DateOffset(months=step - 1)
+        recommendation_month_requested = signal_month_start + pd.DateOffset(months=step)
+        target_rows = monthly[monthly["month"] == signal_month_requested].copy()
+        exact_match = not target_rows.empty
+        if target_rows.empty:
+            candidates = monthly[monthly["month"] <= signal_month_requested].copy()
+            target_row = candidates.iloc[[-1]].copy() if not candidates.empty else monthly.iloc[[-1]].copy()
+        else:
+            target_row = target_rows.iloc[[-1]].copy()
+
+        row = target_row.iloc[0]
+        longs = [ticker for ticker in str(row.get("longs", "")).split(",") if ticker]
+        shorts = [ticker for ticker in str(row.get("shorts", "")).split(",") if ticker]
+        recommendations.append(
+            {
+                "step": int(step),
+                "signal_month_requested": signal_month_requested,
+                "signal_month_used": pd.Timestamp(row["month"]).normalize(),
+                "recommendation_month_requested": recommendation_month_requested,
+                "longs": longs,
+                "shorts": shorts,
+                "row": target_row.reset_index(drop=True),
+                "exact_month_match": bool(exact_match),
+            }
+        )
+
+    primary = recommendations[0]
+
+    return {
+        "signal_month": signal_month_start,
+        "months_ahead": int(months_ahead),
+        "recommendations": recommendations,
+        "recommendation_month_requested": primary["recommendation_month_requested"],
+        "recommendation_month_returned": primary["signal_month_used"] + pd.DateOffset(months=1),
+        "exact_month_match": bool(primary["exact_month_match"]),
+        "longs": list(primary["longs"]),
+        "shorts": list(primary["shorts"]),
+        "row": primary["row"],
+        "backtest_snapshot": backtest_result,
+    }

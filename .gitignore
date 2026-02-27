@@ -425,3 +425,4 @@ data_out/ud_events_cache_test.csv
 data_out/yfinance_prices_cache_missing_tickers.csv
 data_out/yfinance_prices_cache.parquet
 benchmark_SPY.parquet
+TradesV2/data/ticker_metadata_cache.csv

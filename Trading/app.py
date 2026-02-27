@@ -16,7 +16,7 @@ from src.analyst_events import (
     DEFAULT_GRADE_MAPPING_RULES,
     ensure_events_cache,
 )
-from src.backtest import run_backtest
+from src.backtest import recommend_next_month, run_backtest
 from src.data import (
     fetch_prices_from_yfinance,
     get_or_fetch_benchmark_prices,
@@ -31,6 +31,7 @@ CONFIG_PATH = Path("config.json")
 
 DEFAULT_CONFIG = {
     "prices_cache_path": "data_out/yfinance_prices_cache.parquet",
+    "price_provider": "auto",
     "refresh_prices_cache": False,
     "universe_source": "csv",
     "universe_csv": "data_out/top_1000_tickers.csv",
@@ -42,7 +43,7 @@ DEFAULT_CONFIG = {
     "finnhub_universe_cache_path": "data_out/finnhub_universe_performance.csv",
     "finnhub_universe_window_days": 31,
     "refresh_finnhub_universe_cache": False,
-    "analyst_source": "yfinance_events",
+    "analyst_source": "auto_finnhub_then_yfinance",
     "events_cache_path": "ud_events_cache_top1000.csv",
     "finnhub_ratings_cache_path": "data_out/finnhub_analyst_ratings.csv",
     "finnhub_match_backtest_window": True,
@@ -318,13 +319,47 @@ if "last_run" not in st.session_state:
     st.session_state["last_run"] = None
 if "last_coverage" not in st.session_state:
     st.session_state["last_coverage"] = None
+if "last_recommendation" not in st.session_state:
+    st.session_state["last_recommendation"] = None
+if "recommendation_inputs" not in st.session_state:
+    st.session_state["recommendation_inputs"] = None
 
 with st.sidebar:
     st.header("Settings")
 
     prices_cache_path = st.text_input(
-        "Prices cache file (auto-filled from yfinance)",
+        "Prices cache file (auto-filled from selected provider)",
         value=config.get("prices_cache_path", DEFAULT_CONFIG["prices_cache_path"]),
+    )
+    price_provider = st.selectbox(
+        "Price data provider",
+        options=["auto", "yfinance", "alpaca"],
+        index={
+            "auto": 0,
+            "yfinance": 1,
+            "alpaca": 2,
+        }.get(str(config.get("price_provider", "auto")).lower(), 0),
+        help="auto = Alpaca first then yfinance fallback.",
+    )
+    uses_alpaca = price_provider in {"auto", "alpaca"}
+    alpaca_api_key = st.text_input(
+        "Alpaca API key",
+        value=os.getenv("APCA_API_KEY_ID", os.getenv("ALPACA_API_KEY_ID", "")),
+        type="password",
+        disabled=not uses_alpaca,
+    )
+    alpaca_api_secret = st.text_input(
+        "Alpaca API secret",
+        value=os.getenv("APCA_API_SECRET_KEY", os.getenv("ALPACA_API_SECRET_KEY", "")),
+        type="password",
+        disabled=not uses_alpaca,
+    )
+    alpaca_timeout_seconds = st.number_input(
+        "Alpaca timeout (sec)",
+        min_value=5,
+        max_value=120,
+        value=20,
+        disabled=not uses_alpaca,
     )
 
     universe_source = st.selectbox(
@@ -348,18 +383,22 @@ with st.sidebar:
 
     analyst_source = st.selectbox(
         "Analyst signal source",
-        options=["yfinance_events", "finnhub_ratings"],
-        index=0 if config.get("analyst_source", "yfinance_events") == "yfinance_events" else 1,
+        options=["auto_finnhub_then_yfinance", "yfinance_events", "finnhub_ratings"],
+        index={
+            "auto_finnhub_then_yfinance": 0,
+            "yfinance_events": 1,
+            "finnhub_ratings": 2,
+        }.get(str(config.get("analyst_source", "auto_finnhub_then_yfinance")), 0),
     )
     events_cache_path = st.text_input(
         "yfinance events cache CSV path",
         value=config.get("events_cache_path", DEFAULT_CONFIG["events_cache_path"]),
-        disabled=analyst_source != "yfinance_events",
+        disabled=analyst_source == "finnhub_ratings",
     )
     finnhub_ratings_cache_path = st.text_input(
         "Finnhub ratings cache CSV path",
         value=config.get("finnhub_ratings_cache_path", DEFAULT_CONFIG["finnhub_ratings_cache_path"]),
-        disabled=analyst_source != "finnhub_ratings",
+        disabled=analyst_source == "yfinance_events",
     )
 
     start_date = st.date_input(
@@ -511,7 +550,7 @@ with st.sidebar:
     refresh_events_cache = st.checkbox(
         "Refresh yfinance events cache",
         value=bool(config.get("refresh_events_cache", False)),
-        disabled=analyst_source != "yfinance_events",
+        disabled=analyst_source == "finnhub_ratings",
     )
     refresh_prices_cache = st.checkbox(
         "Refresh yfinance prices cache",
@@ -525,7 +564,7 @@ with st.sidebar:
     refresh_finnhub_ratings_cache = st.checkbox(
         "Refresh Finnhub ratings cache",
         value=bool(config.get("refresh_finnhub_ratings_cache", False)),
-        disabled=analyst_source != "finnhub_ratings",
+        disabled=analyst_source == "yfinance_events",
     )
     auto_fetch_missing_analyst = st.checkbox(
         "Auto-fetch missing analyst data each run",
@@ -538,7 +577,10 @@ with st.sidebar:
         help="If enabled, run stops when analyst data does not overlap selected backtest dates.",
     )
 
-    uses_finnhub = universe_source == "finnhub_monthly_performance" or analyst_source == "finnhub_ratings"
+    uses_finnhub = universe_source == "finnhub_monthly_performance" or analyst_source in {
+        "finnhub_ratings",
+        "auto_finnhub_then_yfinance",
+    }
     finnhub_api_key = st.text_input(
         "Finnhub API key",
         value=os.getenv("FINNHUB_API_KEY", ""),
@@ -601,7 +643,7 @@ with st.sidebar:
         )
         refresh_finnhub_universe_cache = bool(config.get("refresh_finnhub_universe_cache", False))
 
-    if analyst_source == "finnhub_ratings":
+    if analyst_source in {"finnhub_ratings", "auto_finnhub_then_yfinance"}:
         st.markdown("**Finnhub Analyst Ratings Settings**")
         finnhub_match_backtest_window = st.checkbox(
             "Auto-match ratings interval to backtest window",
@@ -701,6 +743,8 @@ with st.sidebar:
 
 settings = {
     "prices_cache_path": prices_cache_path,
+    "price_provider": str(price_provider),
+    "alpaca_timeout_seconds": int(alpaca_timeout_seconds),
     "refresh_prices_cache": bool(refresh_prices_cache),
     "universe_source": universe_source,
     "universe_csv": universe_csv,
@@ -763,6 +807,8 @@ def _prepare_for_backtest_inputs(
     *,
     settings: dict[str, object],
     finnhub_api_key: str,
+    alpaca_api_key: str,
+    alpaca_api_secret: str,
     ui_log,
     enforce_coverage: bool,
 ) -> dict[str, object]:
@@ -813,11 +859,15 @@ def _prepare_for_backtest_inputs(
 
     if not universe:
         raise RuntimeError("Universe is empty after selected source processing.")
+    price_provider = str(settings.get("price_provider", "yfinance")).lower()
+    if price_provider == "alpaca" and (not str(alpaca_api_key).strip() or not str(alpaca_api_secret).strip()):
+        raise ValueError("Alpaca provider selected but Alpaca API key/secret are missing.")
 
     prices_tickers = list(dict.fromkeys([*universe, str(settings["benchmark_ticker"]).upper().strip()]))
     ui_log(
         f"Fetching prices from yfinance for {len(prices_tickers):,} tickers "
         f"({settings['start_date']}..{settings['end_date']}) "
+        f"| provider={settings.get('price_provider', 'yfinance')} "
         f"| auto_fetch_missing_prices={bool(settings['auto_fetch_missing_prices'])}..."
     )
     prices, price_stats = fetch_prices_from_yfinance(
@@ -827,6 +877,10 @@ def _prepare_for_backtest_inputs(
         cache_path=str(settings["prices_cache_path"]),
         refresh=bool(settings["refresh_prices_cache"]),
         fetch_missing=bool(settings["auto_fetch_missing_prices"]),
+        provider=str(settings.get("price_provider", "yfinance")),
+        alpaca_api_key=str(alpaca_api_key or ""),
+        alpaca_api_secret=str(alpaca_api_secret or ""),
+        alpaca_timeout=int(settings.get("alpaca_timeout_seconds", 20)),
         sleep_seconds=float(settings["throttle_seconds"]),
         logger=ui_log,
     )
@@ -985,6 +1039,8 @@ if coverage_clicked:
             prepared = _prepare_for_backtest_inputs(
                 settings=settings,
                 finnhub_api_key=finnhub_api_key,
+                alpaca_api_key=alpaca_api_key,
+                alpaca_api_secret=alpaca_api_secret,
                 ui_log=ui_log,
                 enforce_coverage=False,
             )
@@ -1027,6 +1083,8 @@ if run_clicked:
             prepared = _prepare_for_backtest_inputs(
                 settings=settings,
                 finnhub_api_key=finnhub_api_key,
+                alpaca_api_key=alpaca_api_key,
+                alpaca_api_secret=alpaca_api_secret,
                 ui_log=ui_log,
                 enforce_coverage=bool(settings["require_analyst_window_coverage"]),
             )
@@ -1094,8 +1152,20 @@ if run_clicked:
             "analyst_stats": analyst_stats,
             "universe_stats": universe_stats,
             "price_stats": price_stats,
+            "prepared_inputs": {
+                "prices": prices,
+                "universe": universe,
+                "events": events,
+                "finnhub_ratings": finnhub_ratings,
+            },
             "benchmark_source": benchmark_source,
             "error": None,
+        }
+        st.session_state["recommendation_inputs"] = {
+            "prices": prices,
+            "universe": universe,
+            "events": events,
+            "finnhub_ratings": finnhub_ratings,
         }
     except Exception as exc:  # noqa: BLE001
         st.session_state["last_run"] = {
@@ -1105,6 +1175,7 @@ if run_clicked:
             "analyst_stats": None,
             "universe_stats": None,
             "price_stats": None,
+            "prepared_inputs": None,
             "benchmark_source": None,
             "error": str(exc),
         }
@@ -1130,8 +1201,11 @@ if last_coverage is not None:
             {
                 "universe_source": universe_stats.get("source"),
                 "universe_selected_tickers": universe_stats.get("selected_tickers"),
+                "price_provider": settings_used.get("price_provider"),
                 "price_tickers_with_data": price_stats.get("tickers_with_prices"),
                 "price_tickers_without_data": price_stats.get("tickers_without_prices"),
+                "price_provider_alpaca_success": price_stats.get("alpaca_success"),
+                "price_provider_yfinance_success": price_stats.get("yfinance_success"),
                 "analyst_source": analyst_stats.get("source"),
                 "analyst_rows_selected": analyst_stats.get("cache_rows_selected", analyst_stats.get("cache_rows")),
                 "analyst_rows_in_backtest_window": analyst_stats.get("rows_in_backtest_window"),
@@ -1239,6 +1313,193 @@ else:
                     st.warning(warning_text)
             else:
                 st.success("No major robustness flags triggered by current settings.")
+
+        st.subheader("Next Month Recommendations")
+        rec_col1, rec_col2, rec_col3 = st.columns(3)
+        default_signal_month = pd.Timestamp(settings_used.get("end_date", datetime.now().date())).normalize()
+        default_signal_month = default_signal_month.replace(day=1)
+        recommendation_signal_month = rec_col1.date_input(
+            "Input month (signal month)",
+            value=default_signal_month.date(),
+            key="recommendation_signal_month",
+            help="Example: input February 2026 to request recommendations for March 2026.",
+        )
+        recommendation_top_n = rec_col2.number_input(
+            "Recommendation Top N",
+            min_value=1,
+            max_value=1000,
+            value=int(settings_used.get("top_n", 10)),
+            key="recommendation_top_n",
+        )
+        recommendation_bottom_n = rec_col3.number_input(
+            "Recommendation Bottom N",
+            min_value=0,
+            max_value=1000,
+            value=int(settings_used.get("bottom_n", 0)),
+            key="recommendation_bottom_n",
+        )
+        recommendation_months_ahead = st.number_input(
+            "Months ahead",
+            min_value=1,
+            max_value=6,
+            value=2,
+            key="recommendation_months_ahead",
+            help="How many future portfolio months to generate from the input signal month.",
+        )
+        rec_btn_col1, rec_btn_col2 = st.columns(2)
+        refresh_latest_button = rec_btn_col1.button(
+            "Refresh latest data now",
+            key="recommendation_refresh_latest_button",
+            help="Refresh price + analyst caches before generating recommendations.",
+        )
+        rec_button = rec_btn_col2.button("Generate next-month picks", key="recommendation_run_button")
+
+        if refresh_latest_button:
+            rec_logs: list[str] = []
+
+            def rec_ui_log(message: str) -> None:
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                rec_logs.append(f"[{timestamp}] {message}")
+                log_container.code("\n".join(rec_logs[-300:]))
+
+            try:
+                refresh_settings = dict(settings_used)
+                refresh_settings["refresh_prices_cache"] = True
+                refresh_settings["auto_fetch_missing_prices"] = True
+                refresh_settings["auto_fetch_missing_analyst"] = True
+                if str(refresh_settings.get("analyst_source", "yfinance_events")) == "finnhub_ratings":
+                    refresh_settings["refresh_finnhub_ratings_cache"] = True
+                else:
+                    refresh_settings["refresh_events_cache"] = True
+
+                with st.spinner("Refreshing latest data for recommendations..."):
+                    latest_prepared = _prepare_for_backtest_inputs(
+                        settings=refresh_settings,
+                        finnhub_api_key=finnhub_api_key,
+                        alpaca_api_key=alpaca_api_key,
+                        alpaca_api_secret=alpaca_api_secret,
+                        ui_log=rec_ui_log,
+                        enforce_coverage=False,
+                    )
+                st.session_state["recommendation_inputs"] = {
+                    "prices": latest_prepared["prices"],
+                    "universe": latest_prepared["universe"],
+                    "events": latest_prepared["events"],
+                    "finnhub_ratings": latest_prepared["finnhub_ratings"],
+                }
+                st.success("Latest data refreshed. You can now generate recommendations.")
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Latest data refresh failed: {exc}")
+
+        if rec_button:
+            prepared_inputs = (
+                st.session_state.get("recommendation_inputs")
+                or last_run.get("prepared_inputs")
+                or {}
+            )
+            prices_in = prepared_inputs.get("prices")
+            universe_in = prepared_inputs.get("universe")
+            events_in = prepared_inputs.get("events")
+            finnhub_in = prepared_inputs.get("finnhub_ratings")
+            if prices_in is None or universe_in is None or events_in is None:
+                st.error("Run a backtest first to prepare inputs for recommendations.")
+            else:
+                try:
+                    effective_rec_bottom_n = int(recommendation_bottom_n)
+                    if bool(settings_used.get("stress_remove_short_side", False)):
+                        effective_rec_bottom_n = 0
+                    recommendation = recommend_next_month(
+                        prices=prices_in,
+                        universe=universe_in,
+                        events=events_in,
+                        signal_month=pd.Timestamp(recommendation_signal_month),
+                        months_ahead=int(recommendation_months_ahead),
+                        top_n=int(recommendation_top_n),
+                        bottom_n=int(effective_rec_bottom_n),
+                        lookback_days=int(settings_used.get("lookback_days", 90)),
+                        signal_source=str(settings_used.get("analyst_source", "yfinance_events")),
+                        ranking_mode=str(settings_used.get("ranking_mode", "blend_with_consistency")),
+                        consistency_weight=float(settings_used.get("consistency_weight", 0.35)),
+                        consistency_lookback_months=int(settings_used.get("consistency_lookback_months", 12)),
+                        consistency_min_observations=int(settings_used.get("consistency_min_observations", 3)),
+                        signal_lag_months=int(settings_used.get("stress_signal_lag_months", 0)),
+                        randomize_signals=bool(settings_used.get("stress_randomize_signals", False)),
+                        random_seed=int(settings_used.get("stress_random_seed", 42)),
+                        transaction_cost_bps=float(settings_used.get("stress_transaction_cost_bps", 0.0)),
+                        short_borrow_cost_bps_monthly=float(
+                            settings_used.get("stress_short_borrow_cost_bps_monthly", 0.0)
+                        ),
+                        finnhub_ratings=finnhub_in,
+                        grade_mapping_rules=settings_used.get("grade_mapping_rules"),
+                        action_weights=settings_used.get("action_weights"),
+                    )
+                    st.session_state["last_recommendation"] = recommendation
+                except Exception as exc:  # noqa: BLE001
+                    st.session_state["last_recommendation"] = None
+                    st.error(f"Recommendation generation failed: {exc}")
+
+        recommendation_state = st.session_state.get("last_recommendation")
+        if recommendation_state:
+            rec_signal_month = pd.Timestamp(recommendation_state["signal_month"]).strftime("%Y-%m")
+            rec_count = int(recommendation_state.get("months_ahead", 1))
+            st.success(
+                f"Generated {rec_count} month(s) of recommendations from signal month {rec_signal_month}."
+            )
+            rec_blocks = recommendation_state.get("recommendations", [])
+            rec_rows: list[dict[str, object]] = []
+            fallback_months: list[str] = []
+            for block in rec_blocks:
+                rec_month = pd.Timestamp(block["recommendation_month_requested"]).strftime("%Y-%m")
+                signal_month_used = pd.Timestamp(block["signal_month_used"]).strftime("%Y-%m")
+                exact_match = bool(block.get("exact_month_match", False))
+                if not exact_match:
+                    fallback_months.append(rec_month)
+                for idx, ticker in enumerate(block.get("longs", []), start=1):
+                    rec_rows.append(
+                        {
+                            "recommendation_month": rec_month,
+                            "signal_month_used": signal_month_used,
+                            "exact_signal_month_match": exact_match,
+                            "side": "LONG",
+                            "rank": idx,
+                            "ticker": ticker,
+                        }
+                    )
+                for idx, ticker in enumerate(block.get("shorts", []), start=1):
+                    rec_rows.append(
+                        {
+                            "recommendation_month": rec_month,
+                            "signal_month_used": signal_month_used,
+                            "exact_signal_month_match": exact_match,
+                            "side": "SHORT",
+                            "rank": idx,
+                            "ticker": ticker,
+                        }
+                    )
+            if fallback_months:
+                st.warning(
+                    "Some requested months used the latest available signal month due data limits: "
+                    + ", ".join(sorted(set(fallback_months)))
+                )
+            rec_df = pd.DataFrame(
+                rec_rows,
+                columns=[
+                    "recommendation_month",
+                    "signal_month_used",
+                    "exact_signal_month_match",
+                    "side",
+                    "rank",
+                    "ticker",
+                ],
+            )
+            st.dataframe(rec_df, use_container_width=True)
+            st.download_button(
+                "Download recommendation CSV",
+                data=rec_df.to_csv(index=False).encode("utf-8"),
+                file_name=f"recommendation_{rec_signal_month}_plus_{rec_count}m.csv",
+                mime="text/csv",
+                key="recommendation_download_button",
+            )
 
         st.subheader("Equity Curve")
         eq_for_chart = equity_curve.copy().set_index("month")[["portfolio_equity", "benchmark_equity"]]

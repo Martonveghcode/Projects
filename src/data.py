@@ -8,6 +8,7 @@ from typing import Callable, Iterable
 
 import numpy as np
 import pandas as pd
+import requests
 import yfinance as yf
 
 REQUIRED_PRICE_COLUMNS = {"ticker", "date", "adj_close"}
@@ -146,6 +147,59 @@ def _extract_downloaded_close(history: pd.DataFrame) -> pd.Series | None:
     return None
 
 
+def _fetch_prices_from_alpaca(
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    api_key: str,
+    api_secret: str,
+    timeout: int = 20,
+) -> pd.DataFrame:
+    if not api_key or not api_secret:
+        return pd.DataFrame(columns=["ticker", "date", "adj_close"])
+
+    url = f"https://data.alpaca.markets/v2/stocks/{ticker}/bars"
+    headers = {
+        "APCA-API-KEY-ID": str(api_key),
+        "APCA-API-SECRET-KEY": str(api_secret),
+    }
+    params = {
+        "timeframe": "1Day",
+        "start": f"{start_date}T00:00:00Z",
+        "end": f"{end_date}T23:59:59Z",
+        "adjustment": "all",
+        "feed": "iex",
+        "limit": 10000,
+    }
+    response = requests.get(url, headers=headers, params=params, timeout=timeout)
+    if response.status_code >= 400:
+        raise RuntimeError(f"Alpaca HTTP {response.status_code}: {response.text[:200]}")
+    payload = response.json()
+    bars = payload.get("bars") if isinstance(payload, dict) else None
+    if not isinstance(bars, list) or len(bars) == 0:
+        return pd.DataFrame(columns=["ticker", "date", "adj_close"])
+
+    rows: list[dict[str, object]] = []
+    for bar in bars:
+        if not isinstance(bar, dict):
+            continue
+        timestamp = bar.get("t")
+        close = bar.get("c")
+        if timestamp is None or close is None:
+            continue
+        rows.append(
+            {
+                "ticker": str(ticker).upper().strip(),
+                "date": pd.to_datetime(timestamp, errors="coerce", utc=True).tz_convert(None),
+                "adj_close": close,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(columns=["ticker", "date", "adj_close"])
+    return pd.DataFrame(rows, columns=["ticker", "date", "adj_close"])
+
+
 def fetch_prices_from_yfinance(
     tickers: Iterable[str],
     start_date: str | pd.Timestamp,
@@ -153,6 +207,10 @@ def fetch_prices_from_yfinance(
     cache_path: str = "data_out/yfinance_prices_cache.parquet",
     refresh: bool = False,
     fetch_missing: bool = True,
+    provider: str = "yfinance",
+    alpaca_api_key: str = "",
+    alpaca_api_secret: str = "",
+    alpaca_timeout: int = 20,
     sleep_seconds: float = 0.0,
     logger: Callable[[str], None] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
@@ -165,6 +223,9 @@ def fetch_prices_from_yfinance(
     end_ts = pd.Timestamp(end_date).normalize()
     if end_ts <= start_ts:
         raise ValueError("end_date must be after start_date for price fetch.")
+    provider_clean = str(provider or "yfinance").strip().lower()
+    if provider_clean not in {"yfinance", "alpaca", "auto"}:
+        raise ValueError("provider must be one of: yfinance, alpaca, auto")
 
     cached = pd.DataFrame(columns=["ticker", "date", "adj_close"]) if refresh else _load_prices_cache(cache_path)
     known_missing_tickers = set() if refresh else _load_missing_price_tickers(cache_path)
@@ -191,7 +252,8 @@ def fetch_prices_from_yfinance(
         (
             f"Price cache: {cache_path} | requested={len(tickers_clean)} "
             f"| coverage_gap={len(coverage_gap_tickers)} | missing_fetch={len(missing)} "
-            f"| skipped_known_missing={len(skipped_known_missing)} | fetch_missing={bool(fetch_missing)}"
+            f"| skipped_known_missing={len(skipped_known_missing)} | fetch_missing={bool(fetch_missing)} "
+            f"| provider={provider_clean}"
         ),
     )
     if coverage_gap_tickers and not fetch_missing:
@@ -205,28 +267,67 @@ def fetch_prices_from_yfinance(
     fetched_success_tickers: set[str] = set()
     fetch_start = (start_ts - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
     fetch_end = (end_ts + pd.Timedelta(days=7)).strftime("%Y-%m-%d")
+    provider_alpaca_attempted = 0
+    provider_alpaca_success = 0
+    provider_yf_attempted = 0
+    provider_yf_success = 0
     for idx, ticker in enumerate(missing, start=1):
         _log(logger, f"Fetching prices [{idx}/{len(missing)}]: {ticker}")
         try:
-            history = yf.download(
-                ticker,
-                start=fetch_start,
-                end=fetch_end,
-                auto_adjust=True,
-                progress=False,
-                threads=False,
-            )
-            close = _extract_downloaded_close(history)
-            if close is None or close.empty:
+            part = pd.DataFrame(columns=["ticker", "date", "adj_close"])
+            used_provider = None
+            if provider_clean in {"alpaca", "auto"} and alpaca_api_key and alpaca_api_secret:
+                provider_alpaca_attempted += 1
+                try:
+                    alpaca_part = _fetch_prices_from_alpaca(
+                        ticker=ticker,
+                        start_date=fetch_start,
+                        end_date=fetch_end,
+                        api_key=alpaca_api_key,
+                        api_secret=alpaca_api_secret,
+                        timeout=int(alpaca_timeout),
+                    )
+                    if alpaca_part is not None and not alpaca_part.empty:
+                        part = alpaca_part
+                        used_provider = "alpaca"
+                        provider_alpaca_success += 1
+                    elif provider_clean == "alpaca":
+                        _log(logger, f"Alpaca returned no daily bars for {ticker}.")
+                except Exception as exc:  # noqa: BLE001
+                    _log(logger, f"Alpaca fetch failed for {ticker}: {exc}")
+                    if provider_clean == "alpaca":
+                        part = pd.DataFrame(columns=["ticker", "date", "adj_close"])
+
+            if part.empty and provider_clean in {"yfinance", "auto"}:
+                provider_yf_attempted += 1
+                history = yf.download(
+                    ticker,
+                    start=fetch_start,
+                    end=fetch_end,
+                    auto_adjust=True,
+                    progress=False,
+                    threads=False,
+                )
+                close = _extract_downloaded_close(history)
+                if close is not None and not close.empty:
+                    part = close.rename("adj_close").to_frame().reset_index()
+                    part = part.rename(columns={part.columns[0]: "date"})
+                    part["ticker"] = ticker
+                    part = part[["ticker", "date", "adj_close"]]
+                    used_provider = "yfinance"
+                    provider_yf_success += 1
+
+            if part is None or part.empty:
                 tickers_with_no_price_data.add(ticker)
-                _log(logger, f"No price data returned for {ticker}; will skip in future runs unless refresh is enabled.")
+                _log(
+                    logger,
+                    f"No price data returned for {ticker}; will skip in future runs unless refresh is enabled.",
+                )
                 continue
-            part = close.rename("adj_close").to_frame().reset_index()
-            part = part.rename(columns={part.columns[0]: "date"})
-            part["ticker"] = ticker
-            part = part[["ticker", "date", "adj_close"]]
             fetched_parts.append(part)
             fetched_success_tickers.add(ticker)
+            if used_provider:
+                _log(logger, f"{ticker}: fetched from {used_provider}.")
         except Exception as exc:  # noqa: BLE001
             _log(logger, f"Failed prices fetch for {ticker}: {exc}")
         if sleep_seconds > 0:
@@ -268,6 +369,11 @@ def fetch_prices_from_yfinance(
         "tickers_without_prices": len(missing_data_tickers),
         "missing_price_tickers": missing_data_tickers,
         "known_missing_price_tickers": sorted(known_missing_tickers),
+        "provider": provider_clean,
+        "alpaca_attempted": int(provider_alpaca_attempted),
+        "alpaca_success": int(provider_alpaca_success),
+        "yfinance_attempted": int(provider_yf_attempted),
+        "yfinance_success": int(provider_yf_success),
         "cache_path": cache_path,
     }
     return selected.reset_index(drop=True), stats
