@@ -1,22 +1,45 @@
-﻿@tailwind base;
+@import url("https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap");
+
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: dark;
-  --theme-background: #020617;
-  --theme-surface: #0f172a;
-  --theme-border: #334155;
-  --theme-accent: #0ea5e9;
-  --theme-text: #e2e8f0;
+  --theme-background: #0a0a0a;
+  --theme-surface: #121212;
+  --theme-surface-soft: #171717;
+  --theme-surface-elevated: #1d1d1d;
+  --theme-text: #ffffff;
+  --theme-text-soft: #f5f5f8;
+  --theme-muted: #ababab;
+  --theme-border: rgba(255, 255, 255, 0.1);
+  --theme-danger: #ff8a9d;
+  --theme-danger-soft: rgba(255, 138, 157, 0.14);
+  --theme-success-soft: rgba(255, 255, 255, 0.08);
+}
+
+html {
+  background: var(--theme-background);
 }
 
 body {
-  background-color: var(--theme-background);
-  color: var(--theme-text);
-  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  min-height: 100vh;
   margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.06), transparent 26%),
+    linear-gradient(180deg, #0b0b0b 0%, #090909 100%);
+  color: var(--theme-text);
+  font-family: "Satoshi", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+::selection {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--theme-text);
 }
 
 input,
@@ -24,21 +47,6 @@ textarea,
 select,
 button {
   font-family: inherit;
-}
-
-.btn-accent {
-  background-color: var(--theme-accent);
-  color: #ffffff;
-  border: none;
-}
-
-.btn-accent:hover {
-  filter: brightness(1.05);
-}
-
-.btn-accent:disabled,
-.btn-accent[disabled] {
-  filter: brightness(0.85);
 }
 
 button {
@@ -50,5 +58,182 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--theme-accent);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
+}
+
+@layer components {
+  .app-shell {
+    @apply min-h-screen;
+  }
+
+  .app-container {
+    @apply mx-auto flex min-h-screen w-full max-w-7xl items-start px-4 py-5 sm:px-6 sm:py-8 lg:px-8;
+  }
+
+  .app-surface {
+    @apply w-full rounded-[16px] p-5 sm:p-8 lg:p-10;
+    background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.98));
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+  }
+
+  .app-header {
+    @apply flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between;
+  }
+
+  .app-title {
+    @apply text-4xl font-semibold sm:text-5xl;
+    letter-spacing: -0.055em;
+    line-height: 1.02;
+  }
+
+  .app-meta {
+    @apply mt-3 text-sm sm:text-base;
+    color: var(--theme-muted);
+  }
+
+  .app-main {
+    @apply mt-10 grid gap-10 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:gap-12;
+  }
+
+  .app-section-title {
+    @apply text-2xl font-semibold sm:text-[1.95rem];
+    letter-spacing: -0.045em;
+    line-height: 1.05;
+  }
+
+  .app-section-copy {
+    @apply mt-2 text-sm;
+    color: var(--theme-muted);
+  }
+
+  .app-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-[10px] px-5 py-3 text-sm font-medium transition;
+    background: var(--theme-surface-soft);
+    color: var(--theme-text-soft);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  .app-button:hover {
+    transform: translateY(-1px);
+    background: #1b1b1b;
+  }
+
+  .app-button:disabled,
+  .app-button[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .app-button-primary {
+    background: #f5f5f8;
+    color: #0a0a0a;
+  }
+
+  .app-button-primary:hover {
+    background: #ffffff;
+  }
+
+  .app-button-danger {
+    background: var(--theme-danger-soft);
+    color: #ffd6dd;
+  }
+
+  .app-button-square {
+    @apply rounded-[10px] px-3 py-3;
+  }
+
+  .app-label {
+    @apply mb-2 block text-sm font-medium;
+    color: rgba(245, 245, 248, 0.92);
+  }
+
+  .app-field {
+    @apply w-full rounded-[10px] border px-4 py-3 text-sm transition;
+    border-color: rgba(255, 255, 255, 0.06);
+    background: var(--theme-surface-soft);
+    color: var(--theme-text-soft);
+  }
+
+  .app-field::placeholder,
+  .app-code::placeholder {
+    color: rgba(171, 171, 171, 0.8);
+  }
+
+  .app-field:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .app-textarea {
+    min-height: 120px;
+    resize: vertical;
+  }
+
+  .app-segmented {
+    @apply flex gap-1 rounded-[10px] p-1;
+    background: var(--theme-surface-soft);
+  }
+
+  .app-segmented-button {
+    @apply flex-1 rounded-[8px] px-3 py-2 text-sm font-medium transition;
+    color: var(--theme-muted);
+    background: transparent;
+  }
+
+  .app-segmented-button.is-active {
+    color: #0a0a0a;
+    background: #f5f5f8;
+  }
+
+  .app-alert {
+    @apply rounded-[10px] px-4 py-3 text-sm;
+    background: var(--theme-surface-soft);
+  }
+
+  .app-alert-error {
+    background: var(--theme-danger-soft);
+    color: #ffd6dd;
+  }
+
+  .app-alert-success {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--theme-text-soft);
+  }
+
+  .app-empty {
+    @apply text-sm;
+    color: var(--theme-muted);
+  }
+
+  .lesson-card {
+    @apply rounded-[12px] border p-5;
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+  }
+
+  .lesson-slot {
+    @apply flex items-center gap-3 text-sm;
+    color: var(--theme-muted);
+  }
+
+  .app-code {
+    @apply w-full rounded-[10px] border px-4 py-3 text-xs leading-6;
+    min-height: 180px;
+    border-color: rgba(255, 255, 255, 0.06);
+    background: var(--theme-surface-soft);
+    color: rgba(245, 245, 248, 0.9);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  .app-modal {
+    @apply w-full max-w-4xl rounded-[14px] p-5 sm:p-8;
+    background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.98));
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+  }
+
+  .app-inline-note {
+    @apply text-sm;
+    color: var(--theme-muted);
+  }
 }

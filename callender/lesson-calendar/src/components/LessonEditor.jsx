@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Save, Trash2, X } from "lucide-react";
 import { WEEKDAYS } from "../lib/ui";
 import { GOOGLE_COLORS } from "../lib/constants";
@@ -37,31 +37,33 @@ export default function LessonEditor({ lesson, onSave, onCancel, onDelete }) {
   const addSlot = () => {
     setDraft((prev) => ({
       ...prev,
-      slots: [
-        ...prev.slots,
-        { weekday: 1, start: "09:00", end: "10:00" },
-      ],
+      slots: [...prev.slots, { weekday: 1, start: "09:00", end: "10:00" }],
     }));
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
+
     const name = draft.name.trim();
     if (!name) {
-      setError("Lesson name is required");
+      setError("Lesson name is required.");
       return;
     }
+
     if (!draft.slots.length) {
-      setError("Add at least one weekly slot");
+      setError("Add at least one slot.");
       return;
     }
+
     const invalidSlot = draft.slots.find((slot) => !slot.start || !slot.end || slot.start >= slot.end);
     if (invalidSlot) {
-      setError("Each slot needs a valid start/end time");
+      setError("Each slot needs a valid time range.");
       return;
     }
+
     const colorId = resolveLessonColorId(draft) || "9";
     const colorHex = resolveLessonColorHex({ ...draft, colorId });
+
     onSave({
       ...draft,
       name,
@@ -76,26 +78,24 @@ export default function LessonEditor({ lesson, onSave, onCancel, onDelete }) {
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4 backdrop-blur">
-      <div
-        className="w-full max-w-2xl rounded-3xl border p-6 shadow-soft"
-        style={{ backgroundColor: "var(--theme-surface)", borderColor: "var(--theme-border)" }}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{isNew ? "New lesson" : "Edit lesson"}</h2>
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur">
+      <div className="app-modal overflow-y-auto">
+        <div className="flex items-start justify-between gap-4">
+          <h2 className="app-section-title">{isNew ? "New lesson" : "Edit lesson"}</h2>
+
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-full border px-2 py-2"
-            style={{ borderColor: "var(--theme-border)", backgroundColor: "var(--theme-background)", color: "var(--theme-text)" }}
+            className="app-button app-button-square"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
+
+        <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+          <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="lesson-name">
+              <label className="app-label" htmlFor="lesson-name">
                 Lesson name
               </label>
               <input
@@ -103,82 +103,76 @@ export default function LessonEditor({ lesson, onSave, onCancel, onDelete }) {
                 type="text"
                 value={draft.name}
                 onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
-                className="w-full rounded-xl border px-4 py-2 text-sm"
-                style={{
-                  backgroundColor: "var(--theme-background)",
-                  borderColor: "var(--theme-border)",
-                  color: "var(--theme-text)",
-                }}
-                placeholder="Biology"
+                className="app-field"
               />
             </div>
+
             <div className="space-y-2">
-              <label className="text-sm font-medium">Google event color</label>
-              <div className="rounded-2xl border p-3" style={{ borderColor: "var(--theme-border)", backgroundColor: "var(--theme-background)" }}>
-                <div className="mb-3 flex items-center gap-2 text-xs text-slate-300/80">
-                  <span className="inline-flex h-3 w-3 rounded-full" style={{ backgroundColor: selectedColorHex }} />
-                  {GOOGLE_COLORS.find((color) => color.id === selectedColorId)?.name || "Blue"}
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {GOOGLE_COLORS.map((color) => {
-                    const isSelected = color.id === selectedColorId;
-                    return (
-                      <button
-                        key={color.id}
-                        type="button"
-                        onClick={() => setDraft((prev) => ({ ...prev, colorId: color.id }))}
-                        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition ${isSelected ? "shadow-soft" : "opacity-80"}`}
-                        style={{
-                          borderColor: isSelected ? "var(--theme-accent)" : "var(--theme-border)",
-                          backgroundColor: "var(--theme-surface)",
-                          color: "var(--theme-text)",
-                        }}
-                      >
-                        <span className="inline-flex h-4 w-4 flex-shrink-0 rounded-full" style={{ backgroundColor: color.hex }} />
+              <label className="app-label">Google color</label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {GOOGLE_COLORS.map((color) => {
+                  const isSelected = color.id === selectedColorId;
+                  return (
+                    <button
+                      key={color.id}
+                      type="button"
+                      onClick={() => setDraft((prev) => ({ ...prev, colorId: color.id }))}
+                      className="rounded-[10px] px-3 py-2 text-left text-xs font-medium transition"
+                      style={{
+                        background: isSelected ? "#f5f5f8" : "var(--theme-surface-soft)",
+                        color: isSelected ? "#0a0a0a" : "#f5f5f8",
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="inline-flex h-3.5 w-3.5 rounded-full" style={{ backgroundColor: color.hex }} />
                         {color.name}
-                      </button>
-                    );
-                  })}
-                </div>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="app-inline-note flex items-center gap-2 pt-1">
+                <span className="inline-flex h-3 w-3 rounded-full" style={{ backgroundColor: selectedColorHex }} />
+                {GOOGLE_COLORS.find((color) => color.id === selectedColorId)?.name || "Blueberry"}
               </div>
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Weekly slots</span>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="app-inline-note">
+                {draft.slots.length} slot{draft.slots.length === 1 ? "" : "s"}
+              </div>
+
               <button
                 type="button"
                 onClick={addSlot}
-                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-medium transition"
-                style={{ borderColor: "var(--theme-border)", backgroundColor: "var(--theme-background)", color: "var(--theme-text)" }}
+                className="app-button"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-4 w-4" />
                 Add slot
               </button>
             </div>
+
             {draft.slots.length === 0 ? (
-              <p
-                className="rounded-xl border border-dashed px-4 py-4 text-sm text-slate-300/80"
-                style={{ backgroundColor: "var(--theme-background)", borderColor: "var(--theme-border)" }}
-              >
-                No slots yet. Add at least one weekday/time range.
-              </p>
+              <div className="app-empty">No slots yet.</div>
             ) : (
               <div className="space-y-3">
                 {draft.slots.map((slot, index) => (
                   <div
                     key={index}
-                    className="grid gap-3 rounded-2xl border p-4 md:grid-cols-[1fr_1fr_1fr_auto]"
-                    style={{ backgroundColor: "var(--theme-background)", borderColor: "var(--theme-border)" }}
+                    className="grid gap-3 rounded-[10px] bg-[color:var(--theme-surface-soft)] p-4 md:grid-cols-[1fr_1fr_1fr_auto]"
                   >
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase tracking-wide text-slate-300/80">Weekday</label>
+                    <div className="space-y-2">
+                      <label className="app-label" htmlFor={`weekday-${index}`}>
+                        Weekday
+                      </label>
                       <select
+                        id={`weekday-${index}`}
                         value={slot.weekday}
                         onChange={(event) => updateSlot(index, { weekday: Number(event.target.value) })}
-                        className="w-full rounded-xl border px-3 py-2 text-sm"
-                        style={{ backgroundColor: "var(--theme-surface)", borderColor: "var(--theme-border)", color: "var(--theme-text)" }}
+                        className="app-field"
                       >
                         {WEEKDAYS.map((day, value) => (
                           <option key={day} value={value}>
@@ -187,34 +181,40 @@ export default function LessonEditor({ lesson, onSave, onCancel, onDelete }) {
                         ))}
                       </select>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase tracking-wide text-slate-300/80">Start</label>
+
+                    <div className="space-y-2">
+                      <label className="app-label" htmlFor={`start-${index}`}>
+                        Start
+                      </label>
                       <input
+                        id={`start-${index}`}
                         type="time"
                         value={slot.start}
                         onChange={(event) => updateSlot(index, { start: event.target.value })}
-                        className="w-full rounded-xl border px-3 py-2 text-sm"
-                        style={{ backgroundColor: "var(--theme-surface)", borderColor: "var(--theme-border)", color: "var(--theme-text)" }}
+                        className="app-field"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase tracking-wide text-slate-300/80">End</label>
+
+                    <div className="space-y-2">
+                      <label className="app-label" htmlFor={`end-${index}`}>
+                        End
+                      </label>
                       <input
+                        id={`end-${index}`}
                         type="time"
                         value={slot.end}
                         onChange={(event) => updateSlot(index, { end: event.target.value })}
-                        className="w-full rounded-xl border px-3 py-2 text-sm"
-                        style={{ backgroundColor: "var(--theme-surface)", borderColor: "var(--theme-border)", color: "var(--theme-text)" }}
+                        className="app-field"
                       />
                     </div>
+
                     <div className="flex items-end justify-end">
                       <button
                         type="button"
                         onClick={() => removeSlot(index)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition"
-                        style={{ borderColor: "#f43f5e7f", color: "#fecdd3" }}
+                        className="app-button app-button-danger"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-4 w-4" />
                         Remove
                       </button>
                     </div>
@@ -224,39 +224,34 @@ export default function LessonEditor({ lesson, onSave, onCancel, onDelete }) {
             )}
           </div>
 
-          {error && (
-            <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: "#f43f5e7f", color: "#fecdd3" }}>
-              {error}
-            </div>
-          )}
+          {error && <div className="app-alert app-alert-error">{error}</div>}
 
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             {onDelete && lesson?.id ? (
               <button
                 type="button"
                 onClick={() => onDelete(lesson.id)}
-                className="inline-flex items-center gap-1.5 rounded-xl border px-4 py-2 text-sm font-medium transition"
-                style={{ borderColor: "#f43f5e7f", color: "#fecdd3" }}
+                className="app-button app-button-danger"
               >
-                <Trash2 className="h-4 w-4" /> Delete lesson
+                <Trash2 className="h-4 w-4" />
+                Delete lesson
               </button>
             ) : (
-              <span className="text-xs uppercase tracking-wide text-slate-300/80">
-                {draft.slots.length} slot(s)
-              </span>
+              <span className="app-inline-note" />
             )}
-            <div className="flex items-center gap-3">
+
+            <div className="flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={onCancel}
-                className="rounded-xl border px-4 py-2 text-sm font-medium transition"
-                style={{ borderColor: "var(--theme-border)", backgroundColor: "var(--theme-background)", color: "var(--theme-text)" }}
+                className="app-button"
               >
                 Cancel
               </button>
+
               <button
                 type="submit"
-                className="btn-accent inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold shadow-soft transition"
+                className="app-button app-button-primary"
               >
                 <Save className="h-4 w-4" />
                 Save lesson

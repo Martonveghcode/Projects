@@ -10,11 +10,11 @@ export const REMINDER_TIMES = [
 ];
 
 export const DEFAULT_THEME = {
-  background: "#020617",
-  surface: "#0f172a",
-  border: "#334155",
-  accent: "#0ea5e9",
-  text: "#e2e8f0",
+  background: "#0a0a0a",
+  surface: "#121212",
+  border: "rgba(255, 255, 255, 0.1)",
+  accent: "#23f778",
+  text: "#ffffff",
 };
 
 export const LOCAL_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;

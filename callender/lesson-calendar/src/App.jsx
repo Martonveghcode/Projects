@@ -1,6 +1,6 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { LogIn, LogOut, Settings } from "lucide-react";
+import { LogIn, LogOut, Plus, Settings } from "lucide-react";
 import {
   loadGoogle,
   signIn,
@@ -13,37 +13,16 @@ import {
   setCfg,
   getLessons,
   setLessons,
-  getPrefs,
-  setPrefs,
 } from "./lib/storage";
 import { uid } from "./lib/ui";
-import { DEFAULT_THEME, GOOGLE_COLOR_MAP } from "./lib/constants";
+import { GOOGLE_COLOR_MAP } from "./lib/constants";
 import { resolveLessonColorHex, resolveLessonColorId } from "./lib/events";
 import LessonsPanel from "./components/LessonsPanel";
 import CreateEventPanel from "./components/CreateEventPanel";
 import SetupModal from "./components/SetupModal";
 import LessonEditor from "./components/LessonEditor";
 
-const defaultPrefs = () => ({
-  theme: { ...DEFAULT_THEME },
-});
-
 const TEST_CALENDAR_NAME = "TESTS";
-
-const hydratePrefs = (stored) => {
-  const base = defaultPrefs();
-  if (!stored) {
-    return base;
-  }
-  return {
-    ...base,
-    ...stored,
-    theme: {
-      ...DEFAULT_THEME,
-      ...(stored.theme || {}),
-    },
-  };
-};
 
 const normalizeLesson = (lesson) => {
   if (!lesson) return lesson;
@@ -59,23 +38,28 @@ const sanitizeLessonSlots = (slots = [], lessonIndex) => {
   if (!Array.isArray(slots)) {
     return [];
   }
+
   return slots
     .map((slot, slotIndex) => {
       if (!slot || typeof slot !== "object") {
         console.warn(`[import] Ignoring invalid slot at index ${slotIndex} for lesson ${lessonIndex}`);
         return null;
       }
+
       const weekday = Number(slot.weekday);
       const start = typeof slot.start === "string" ? slot.start : "";
       const end = typeof slot.end === "string" ? slot.end : "";
+
       if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
         console.warn(`[import] Ignoring slot with invalid weekday at index ${slotIndex} for lesson ${lessonIndex}`);
         return null;
       }
+
       if (!start || !end) {
         console.warn(`[import] Ignoring slot with missing time at index ${slotIndex} for lesson ${lessonIndex}`);
         return null;
       }
+
       return { weekday, start, end };
     })
     .filter(Boolean);
@@ -85,23 +69,28 @@ const prepareLessonsFromFile = (lessons) => {
   if (!Array.isArray(lessons)) {
     throw new Error("Lessons must be an array.");
   }
+
   return lessons.map((lesson, index) => {
     if (!lesson || typeof lesson !== "object") {
       throw new Error(`Lesson at index ${index} is not a valid object.`);
     }
+
     const name = typeof lesson.name === "string" ? lesson.name.trim() : "";
     if (!name) {
       throw new Error(`Lesson at index ${index} is missing a name.`);
     }
+
     const sanitized = {
       ...lesson,
       id: typeof lesson.id === "string" && lesson.id.trim() ? lesson.id.trim() : uid("lesson"),
       name,
       slots: sanitizeLessonSlots(lesson.slots, index),
     };
+
     return normalizeLesson(sanitized);
   });
 };
+
 export default function App() {
   const [cfg, setCfgState] = useState(() => getCfg());
   const [setupOpen, setSetupOpen] = useState(() => {
@@ -109,7 +98,6 @@ export default function App() {
     return !stored?.clientId || !stored?.apiKey;
   });
   const [lessons, setLessonsState] = useState(() => getLessons().map(normalizeLesson));
-  const [prefs, setPrefsState] = useState(() => hydratePrefs(getPrefs()));
   const [editingLesson, setEditingLesson] = useState(null);
 
   const [googleReady, setGoogleReady] = useState(false);
@@ -124,26 +112,14 @@ export default function App() {
   const [eventFeedback, setEventFeedback] = useState(null);
   const [eventSubmitting, setEventSubmitting] = useState(false);
 
-  const theme = useMemo(() => ({ ...DEFAULT_THEME, ...(prefs?.theme || {}) }), [prefs?.theme]);
+  const sortedLessons = useMemo(() => [...lessons].sort((a, b) => a.name.localeCompare(b.name)), [lessons]);
   const dataSnapshot = useMemo(
     () => ({
       cfg: cfg ? { ...cfg } : null,
       lessons: lessons.map((lesson) => ({ ...lesson })),
-      prefs: prefs ? { ...prefs } : null,
     }),
-    [cfg, lessons, prefs]
+    [cfg, lessons]
   );
-
-  const updatePrefs = useCallback((updater) => {
-    setPrefsState((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      return hydratePrefs(next);
-    });
-  }, []);
-
-  const sortedLessons = useMemo(() => {
-    return [...lessons].sort((a, b) => a.name.localeCompare(b.name));
-  }, [lessons]);
 
   useEffect(() => {
     setCfg(cfg);
@@ -154,24 +130,16 @@ export default function App() {
   }, [lessons]);
 
   useEffect(() => {
-    setPrefs(prefs);
-  }, [prefs]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    Object.entries(theme).forEach(([key, value]) => {
-      root.style.setProperty(`--theme-${key}`, value);
-    });
-  }, [theme]);
-
-  useEffect(() => {
     let cancelled = false;
+
     if (cfg?.clientId && cfg?.apiKey) {
       setGoogleLoading(true);
       setGoogleError("");
       loadGoogle(cfg)
         .then(() => {
-          if (!cancelled) setGoogleReady(true);
+          if (!cancelled) {
+            setGoogleReady(true);
+          }
         })
         .catch((error) => {
           if (!cancelled) {
@@ -180,11 +148,14 @@ export default function App() {
           }
         })
         .finally(() => {
-          if (!cancelled) setGoogleLoading(false);
+          if (!cancelled) {
+            setGoogleLoading(false);
+          }
         });
     } else {
       setGoogleReady(false);
     }
+
     return () => {
       cancelled = true;
     };
@@ -204,7 +175,9 @@ export default function App() {
   const locateTestCalendar = useCallback(async () => {
     try {
       const calendars = await listCalendars();
-      const match = calendars.find((calendar) => (calendar.summary || "").trim().toLowerCase() === TEST_CALENDAR_NAME.toLowerCase());
+      const match = calendars.find(
+        (calendar) => (calendar.summary || "").trim().toLowerCase() === TEST_CALENDAR_NAME.toLowerCase()
+      );
       const foundId = match?.id || null;
       setTestCalendarId(foundId);
       setTestCalendarLookupAttempted(true);
@@ -222,16 +195,18 @@ export default function App() {
       setTestCalendarLookupAttempted(false);
       return;
     }
+
     if (testCalendarLookupAttempted) {
       return;
     }
+
     locateTestCalendar().catch((error) => {
       console.warn(`[calendar] Failed to locate ${TEST_CALENDAR_NAME} calendar`, error);
     });
   }, [connected, locateTestCalendar, testCalendarLookupAttempted]);
 
   useEffect(() => {
-    if (!eventFeedback) return;
+    if (!eventFeedback) return undefined;
     const timer = window.setTimeout(() => setEventFeedback(null), 4000);
     return () => window.clearTimeout(timer);
   }, [eventFeedback]);
@@ -242,6 +217,7 @@ export default function App() {
       setSetupOpen(true);
       return;
     }
+
     setConnecting(true);
     setGoogleError("");
     try {
@@ -274,23 +250,13 @@ export default function App() {
     [handleDisconnect]
   );
 
-  const handleThemeChange = useCallback(
-    (nextTheme) => {
-      updatePrefs((prev) => ({ ...prev, theme: { ...prev.theme, ...nextTheme } }));
-    },
-    [updatePrefs]
-  );
-
-  const handleThemeReset = useCallback(() => {
-    updatePrefs((prev) => ({ ...prev, theme: { ...DEFAULT_THEME } }));
-  }, [updatePrefs]);
-
   const handleCreateLesson = useCallback(() => {
     const now = dayjs();
     const start = now.add(1, "hour").startOf("hour");
     const end = start.add(1, "hour");
     const defaultColorId = "9";
     const defaultColor = GOOGLE_COLOR_MAP[defaultColorId]?.hex || "#5484ed";
+
     setEditingLesson({
       id: null,
       name: "",
@@ -321,6 +287,7 @@ export default function App() {
         end: slot.end,
       })),
     };
+
     setLessonsState((prev) => {
       const existing = prev.find((item) => item.id === lesson.id);
       if (existing) {
@@ -328,6 +295,7 @@ export default function App() {
       }
       return [...prev, lesson];
     });
+
     setEditingLesson(null);
   }, []);
 
@@ -353,9 +321,11 @@ export default function App() {
         } else if (incomingCfg && typeof incomingCfg === "object") {
           const clientId = typeof incomingCfg.clientId === "string" ? incomingCfg.clientId.trim() : "";
           const apiKey = typeof incomingCfg.apiKey === "string" ? incomingCfg.apiKey.trim() : "";
+
           if (!clientId || !apiKey) {
             throw new Error("Credentials must include non-empty clientId and apiKey strings.");
           }
+
           setCfgState({ clientId, apiKey });
           applied.push("credentials");
           handleDisconnect();
@@ -371,17 +341,8 @@ export default function App() {
         applied.push("lessons");
       }
 
-      if (Object.prototype.hasOwnProperty.call(payload, "prefs")) {
-        const incomingPrefs = payload.prefs;
-        if (incomingPrefs !== null && typeof incomingPrefs !== "object") {
-          throw new Error("Preferences section must be an object or null.");
-        }
-        setPrefsState(hydratePrefs(incomingPrefs));
-        applied.push("preferences");
-      }
-
       if (!applied.length) {
-        throw new Error("The file does not include any recognized sections (cfg, lessons, prefs).");
+        throw new Error("The file does not include any recognized sections (cfg, lessons).");
       }
 
       return applied;
@@ -394,8 +355,10 @@ export default function App() {
       setEventSubmitting(true);
       setEventFeedback(null);
       let success = false;
+
       try {
         let targetCalendarId = "primary";
+
         if (eventType === "test") {
           let calendarIdToUse = testCalendarId;
           if (!calendarIdToUse) {
@@ -405,11 +368,14 @@ export default function App() {
               throw new Error(calendarLookupError.message || `Failed to locate ${TEST_CALENDAR_NAME} calendar`);
             }
           }
+
           if (!calendarIdToUse) {
             throw new Error(`Create a calendar named "${TEST_CALENDAR_NAME}" in Google Calendar to store tests.`);
           }
+
           targetCalendarId = calendarIdToUse;
         }
+
         const insertPayload = {
           summary,
           description,
@@ -418,99 +384,104 @@ export default function App() {
           reminders,
           calendarId: targetCalendarId,
         };
+
         if (eventType !== "test" && colorId) {
           insertPayload.colorId = colorId;
         }
+
         await insertEvent(insertPayload);
-        const successMessage =
-          eventType === "test"
-            ? `Test event added to "${TEST_CALENDAR_NAME}" calendar`
-            : "Event created in Google Calendar";
-        setEventFeedback({ type: "success", message: successMessage });
+
+        setEventFeedback({
+          type: "success",
+          message:
+            eventType === "test"
+              ? `Test event added to "${TEST_CALENDAR_NAME}".`
+              : "Event added to Google Calendar.",
+        });
         success = true;
       } catch (error) {
-        setEventFeedback({ type: "error", message: error.message || "Failed to create event" });
+        setEventFeedback({ type: "error", message: error.message || "Failed to create event." });
       } finally {
         setEventSubmitting(false);
       }
+
       return success;
     },
     [locateTestCalendar, testCalendarId]
   );
 
-  const surfaceStyle = useMemo(
-    () => ({ backgroundColor: "var(--theme-surface)", borderColor: "var(--theme-border)" }),
-    []
-  );
-
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "var(--theme-background)", color: "var(--theme-text)" }}>
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 py-10">
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold">Lesson Calendar</h1>
-            <p className="text-sm text-slate-300/80">
-              Define lessons, plan sessions, and send them straight to Google Calendar.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setSetupOpen(true)}
-              className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition"
-              style={{
-                backgroundColor: "var(--theme-surface)",
-                borderColor: "var(--theme-border)",
-                color: "var(--theme-text)",
-              }}
-            >
-              <Settings className="h-4 w-4" />
-              Settings
-            </button>
-            {connected ? (
+    <div className="app-shell">
+      <div className="app-container">
+        <div className="app-surface">
+          <header className="app-header">
+            <div>
+              <h1 className="app-title">Homework Calendar</h1>
+              <p className="app-meta">
+                {sortedLessons.length} lesson{sortedLessons.length === 1 ? "" : "s"}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={handleDisconnect}
-                className="btn-accent flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-soft transition"
+                onClick={() => setSetupOpen(true)}
+                className="app-button"
               >
-                <LogOut className="h-4 w-4" />
-                Disconnect
+                <Settings className="h-4 w-4" />
+                Setup
               </button>
-            ) : (
+
+              {connected ? (
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  className="app-button"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Disconnect Google
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={connectGoogle}
+                  disabled={connecting || googleLoading}
+                  className="app-button app-button-primary"
+                >
+                  <LogIn className="h-4 w-4" />
+                  {connecting ? "Connecting..." : googleLoading ? "Loading Google..." : "Connect Google"}
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={connectGoogle}
-                disabled={connecting || googleLoading}
-                className="btn-accent flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-soft transition disabled:cursor-not-allowed disabled:opacity-80"
+                onClick={handleCreateLesson}
+                className="app-button"
               >
-                <LogIn className="h-4 w-4" />
-                {connecting ? "Connecting..." : "Connect Google"}
+                <Plus className="h-4 w-4" />
+                New lesson
               </button>
-            )}
-          </div>
-        </header>
+            </div>
+          </header>
 
-        {googleError && (
-          <div className="rounded-2xl border px-4 py-3 text-sm" style={{ ...surfaceStyle, borderColor: "#f43f5e7f", color: "#fecdd3" }}>
-            {googleError}
-          </div>
-        )}
+          {googleError && <div className="app-alert app-alert-error mt-6">{googleError}</div>}
 
-        <main className="flex flex-col gap-6">
-          <CreateEventPanel
-            lessons={sortedLessons}
-            onCreate={handleCreateEvent}
-            isConnected={connected}
-            isSubmitting={eventSubmitting}
-            feedback={eventFeedback}
-          />
-          <LessonsPanel
-            lessons={sortedLessons}
-            onCreate={handleCreateLesson}
-            onEdit={setEditingLesson}
-            onDelete={handleDeleteLesson}
-          />
-        </main>
+          <main className="app-main">
+            <CreateEventPanel
+              lessons={sortedLessons}
+              onCreate={handleCreateEvent}
+              isConnected={connected}
+              isSubmitting={eventSubmitting}
+              feedback={eventFeedback}
+            />
+
+            <LessonsPanel
+              lessons={sortedLessons}
+              onEdit={setEditingLesson}
+              onDelete={handleDeleteLesson}
+            />
+          </main>
+        </div>
       </div>
 
       <SetupModal
@@ -518,9 +489,6 @@ export default function App() {
         values={cfg}
         onSave={handleSaveCfg}
         onClose={!cfg ? undefined : () => setSetupOpen(false)}
-        theme={theme}
-        onThemeChange={handleThemeChange}
-        onThemeReset={handleThemeReset}
         dataSnapshot={dataSnapshot}
         onImportData={handleImportData}
       />
@@ -536,4 +504,3 @@ export default function App() {
     </div>
   );
 }
-
